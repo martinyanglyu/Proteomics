@@ -1,0 +1,9 @@
+default:
+  document:
+     author: "Yang Lyu"   
+  Path: "/Volumes/lyu.yang/MAC_1/R/Project/52_CCRCC_proteomics"
+  Report: "/Volumes/lyu.yang/MAC_1/R/Project/52_CCRCC_proteomics/2025_report"
+  Email: "lyu.yang@wustl.edu"
+  Token_file: "/Volumes/lyu.yang/MAC_1/Github/synapse_token.txt"
+  Reference_path: "/Volumes/lyu.yang/MAC_1/R/Public_database/Reference"
+ 

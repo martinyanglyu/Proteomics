@@ -1,0 +1,440 @@
+---
+title: "7_GIT2 KO CELL LINE"
+author: "`r config::get(file = 'config.yml')$document$author`"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    keep_tex: true
+    latex_engine: pdflatex
+    fig_caption: yes
+    highlight: haddock
+    number_sections: yes
+
+knit: (
+  function(inputFile, encoding) {
+    config=config::get(file = 'config.yml') 
+    
+    pSubTitle <- "7_GIT2 KO CELL LINE.pdf"
+    
+    if (!dir.exists(config$Report)) {
+      dir.create(config$Report, recursive = TRUE)
+    }
+    
+    base_output_dir <- config$Report
+    
+    DIR=file.path(base_output_dir)
+    
+    rmarkdown::render(
+      input = inputFile,
+      encoding = encoding,
+      output_file = pSubTitle,
+      output_dir = DIR)
+    }
+  )
+---
+
+
+
+```{r,echo=F}
+
+      
+#install.packages('tinytex')
+#tinytex::install_tinytex() 
+
+# importing rstudioapi package
+# library("rstudioapi") 
+  
+# retrieving path from getSourceEditorContext() 
+# using $ operator 
+#rstudioapi::getSourceEditorContext()$path 
+```
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F,include=F,message = F,warning = F)
+
+```
+
+
+```{r, include=FALSE}
+# Define your own config
+getwd()
+config <- config::get(file = 'config.yml')
+# 
+Working_path=config$Path
+email=config$Email
+Authtoken=config$Token_file
+knitr::opts_chunk$set(echo = F,warnings =F, message=F,include=F)
+options(knitr.table.format = 'markdown',encoding = 'UTF-8',warnings =F, message=F ) 
+# Check and create output directory if it doesn't exist
+output_dir <- file.path(Working_path, "Data_preparation")
+if (!dir.exists(output_dir)) {
+  dir.create(output_dir, recursive = TRUE)
+}
+Reference_path=config$Reference_path
+
+dir(Reference_path)
+# load function
+source("Rfunction.R" ) 
+```
+
+
+```{r,include=F}
+# laoding data 2025_06_MS170123_786KD-recalculate.xlsx 
+Path=Working_path
+Rawdata_path=file.path(Path,"Rawdata")
+Out_table_path=file.path(Path,"Out","table")
+pathview_out=file.path(Rawdata_path,"Pathview")
+Cellline_rawdata_path=file.path(Rawdata_path,"Cellline/Proteomics")
+Reference_path="/Volumes/lyu.yang/MAC_1/R/Public_database/Reference"
+dir(Cellline_rawdata_path)
+```
+
+
+```{r,include=F}
+Org_exp_file=file.path(Cellline_rawdata_path,"2025_06_MS170123_786KD-recalculate.xlsx")
+
+```
+
+
+# Data annotation 
+
+```{r,include=F, eval=F}
+# For "GIT2 KD 786O-conclusion-ratio.xlsx"
+# filtered by Score >2 and pepetide number >2
+# Exp_data_org=readxl::read_excel(Org_exp_file,sheet=1)%>%
+#   # Extract the part that matches "GN=<Gene Name>"
+#   mutate(Gene_name = stringr::str_extract(Description, "GN=\\w+")) %>%
+#   # Remove the "GN=" part to leave just the gene name
+#   mutate(Gene_name = stringr::str_replace(Gene_name, "GN=", "")) 
+# 
+# 
+# Exp_data=Exp_data_org%>%.[,grepl("^sh",colnames(.))]%>%mutate(Gene_name=Exp_data_org$Gene_name)%>%group_by(Gene_name)%>%summarise_all(mean)%>%as.data.frame()%>%matrix.please()
+# 
+# rows_with_na_or_zero <- Exp_data%>%as.data.frame() %>%
+#   dplyr::filter(if_any(everything(), ~ is.na(.) | . == 0))
+# 
+# # View the rows that contain NA or 0 values
+# print(rows_with_na_or_zero)
+# print("remove these genes from the data")
+# 
+# Exp_data_rm_NA=Exp_data%>%na.omit()
+# 
+# Pro_log_data=log2(Exp_data_rm_NA)
+
+
+```
+
+```{r,include=F}
+# filtered by Score >2 and pepetide number >2
+Exp_data_org=readxl::read_excel(Org_exp_file,sheet=1)%>%
+  # Extract the part that matches "GN=<Gene Name>"
+  mutate(Gene_name = stringr::str_extract(Description, "GN=\\w+"))%>%
+  mutate(Gene_name = stringr::str_replace(Gene_name, "GN=", ""))
+colnames(Exp_data_org)=gsub("# ","",colnames(Exp_data_org))
+colnames(Exp_data_org)=gsub(" ","_",colnames(Exp_data_org))
+colnames(Exp_data_org)=gsub("\\/","_",colnames(Exp_data_org))
+
+Pipetide_number=min(Exp_data_org$"# Unique Peptides")
+
+
+Exp_data=Exp_data_org%>%.[,grepl("rep",colnames(.))]%>%mutate(Gene_name=Exp_data_org$Gene_name)%>%group_by(Gene_name)%>%summarise_all(mean)%>%as.data.frame()%>%matrix.please()
+# 
+rows_with_na_or_zero <- Exp_data%>%as.data.frame() %>%
+   dplyr::filter(if_any(everything(), ~ is.na(.) | . == 0))
+# 
+# View the rows that contain NA or 0 values
+print(rows_with_na_or_zero)
+print("remove these genes from the data")
+# 
+Exp_data_rm_NA=Exp_data%>%na.omit()
+Pro_log_data=log2(Exp_data_rm_NA)
+
+
+```
+
+
+# DEGs in sh1 and sh3 groups (t-test)
+```{r}
+library(dplyr)
+
+perform_ttest_by_group <- function(clinical_data, Pro_log_data) {
+  # Create an empty list to store results
+  Ttest_list <- list()
+  
+  # Get the unique sorted groups from the clinical data
+  Groups <- unique(clinical_data$Group) %>% sort()
+  
+  # Loop through each group and perform t-tests
+  for (i in Groups) {
+    # Get the sample IDs for the current group
+    samples <- clinical_data %>%
+      dplyr::filter(Group == i) %>%
+      pull(Sample_ID)
+    
+    # Subset the Pro_log_data based on these samples
+    Data <- Pro_log_data[, samples]
+    
+    # Perform the t-test on each gene (row-wise t-tests)
+    Ttest <- t(Data) %>%
+      as.data.frame() %>%
+      apply(2, function(x) t.test(x)$p.value) %>%
+      unlist() %>%
+      as.data.frame() %>%
+      setNames("pvalue") %>%
+      mutate(padj = p.adjust(pvalue))  # Adjust p-values using FDR
+    
+    # Calculate the mean log2 fold change for each gene
+    Mean_log <- t(Data) %>%
+      as.data.frame() %>%
+      apply(2, function(x) mean(x))
+    
+    # Add log2 fold change and gene symbols to the results, then store in Ttest_list
+    Ttest_list[[i]] <- Ttest %>%
+      mutate(log2Foldchange = Mean_log, gene_symbol = rownames(.))
+  }
+  
+  # Return the list of results
+  return(Ttest_list)
+  
+  # Example usage:
+# result <- perform_ttest_by_group(clinical_54_data_2, Pro_log_data)
+}
+
+
+
+```
+
+
+# Ttest (sh1 and sh3 seperately)
+
+```{r}
+Sample_anno=data.frame(Sample_ID=colnames(Exp_data))%>%mutate(Group=ifelse(grepl("KD1",Sample_ID),"sh1_group","sh3_group"))
+Ttest_data=perform_ttest_by_group(Sample_anno ,Pro_log_data)
+Ttest_data[[1]]%>%dplyr::filter(pvalue<0.01)
+
+P1=Valcano_plot_FC_cut(Ttest_data[[1]],FC=1.2)
+P2=Valcano_plot_FC_cut(Ttest_data[[2]],FC=1.2)
+
+```
+## All DEPs in two sh groups
+```{r,fig.width=12,fig.height=6,include=T}
+cowplot::plot_grid(P1,P2,labels = names(Ttest_data))
+```
+
+
+
+```{r}
+
+S1_DEGs=get_diff_expressed_genes(Ttest_data[[1]],FC=1.2)
+S2_DEGs=get_diff_expressed_genes(Ttest_data[[2]],FC=1.2)
+
+# Find common upregulated genes
+common_upregulated_genes <- intersect(S1_DEGs$upregulated_genes, S2_DEGs$upregulated_genes)
+
+# Find common downregulated genes
+common_downregulated_genes <- intersect(S1_DEGs$downregulated_genes, S2_DEGs$downregulated_genes)
+
+# Output the common upregulated and downregulated genes
+list(
+  common_upregulated_genes = common_upregulated_genes,
+  common_downregulated_genes = common_downregulated_genes
+)
+
+All_sig=c(common_upregulated_genes,common_downregulated_genes )
+Ttest_filter_1=Ttest_data[[1]]%>%dplyr::filter(gene_symbol%in%All_sig)
+Ttest_filter_2=Ttest_data[[2]]%>%dplyr::filter(gene_symbol%in%All_sig)
+
+P3=Valcano_plot_FC_cut(Ttest_filter_1,FC=1.2)
+P4=Valcano_plot_FC_cut(Ttest_filter_2,FC=1.2)
+
+```
+
+
+## Common DEPs in two sh groups 
+```{r,fig.width=12,fig.height=6,include=T}
+cowplot::plot_grid(P3,P4,labels = names(Ttest_data))
+```
+ 
+# GSEA plot (sh1 and sh3 )
+
+```{r,fig.width=12,fig.height=8,include=T}
+GSEA_ref=file.path(Reference_path,"Human_GSEA")
+GMT_files=list.files(file.path(Reference_path,"Human_GSEA"),pattern="v7.5.1.symbols.gmt.txt",full.names = T)%>%.[grepl("c2|h",.)]
+
+Fgsea_output <- perform_fgsea_analysis(Ttest_list=Ttest_data, GMT_files, stat_value="pvalue")
+Common_pathways=find_common_pathways(Fgsea_output)
+Up_common_pathways=Common_pathways[[1]]
+DN_common_pathways=Common_pathways[[2]]
+Combined_up_pathways=combine_selected_pathways(Fgsea_output ,Up_common_pathways)
+
+P5=Enrich_dotplot(Combined_up_pathways)
+Combined_DN_pathways=combine_selected_pathways(Fgsea_output ,DN_common_pathways)%>%dplyr::filter(grepl("WP|HALLMARK|KEGG",pathway))
+
+P6=Enrich_dotplot(Combined_DN_pathways)
+All_sig_pathways=rbind(Combined_up_pathways,Combined_DN_pathways)%>%mutate(Database=ifelse(grepl("HALLMARK",pathway),"Hallmark_dataset","C2_dataset"))%>%dplyr::filter(grepl("WP|HALLMARK",pathway))
+P7=Enrich_dotplot_bydataset(All_sig_pathways)
+```
+
+\newpage
+```{r,fig.width=18,fig.height=12,include=T}
+cowplot::plot_grid(P7)
+```
+ 
+
+# Ttest and GSEA plot (combination of sh1 and sh3 )
+
+```{r,fig.width=12,fig.height=8,include=T}
+
+Sample_anno=data.frame(Sample_ID=colnames(Exp_data))%>%mutate(Group="Combination")
+Ttest_data=perform_ttest_by_group(Sample_anno ,Pro_log_data)
+write.csv(Ttest_data[[1]],file=file.path(Out_table_path,"shRNA_combination_Ttest.csv"),row.names = F)
+Fgsea_output <- perform_fgsea_analysis(Ttest_list=Ttest_data, stat_value="pvalue",GMT_files)
+write.csv(Fgsea_output[[1]][,c(1:6)],file=file.path(Out_table_path,"shRNA_combination_FGSEA.csv"),row.names = F)
+
+All_sig_pathways=Fgsea_output[[1]]%>%mutate(Database=ifelse(grepl("HALLMARK",pathway),"Hallmark_dataset","C2_dataset"))%>%dplyr::filter(padj<0.05)%>%dplyr::filter(grepl("WP|HALLMARK",pathway))%>%mutate(Group="Combination") 
+
+
+P8=Enrich_dotplot_bydataset(All_sig_pathways)
+```
+
+\newpage
+```{r,fig.width=14,fig.height=18,include=T}
+cowplot::plot_grid(P8)
+```
+```{r,include=F}
+P9=Valcano_plot_FC_cut(Ttest_data[[1]],FC=1.2)
+
+```
+
+\newpage
+```{r,fig.width=6,fig.height=4,include=T}
+cowplot::plot_grid(P9)
+```
+
+```{r}
+All_sig_pathways$pathway
+```
+
+
+```{r}
+pathwaylist1= fgsea::gmtPathways(GMT_files[1])
+pathwaylist2= fgsea::gmtPathways(GMT_files[2])
+
+pathwaylist_all=c(pathwaylist1,pathwaylist2)
+stats <- Ttest_data[[1]]%>%dplyr::filter(pvalue<0.05)%>%.$log2Foldchange
+#names(stats) <- rownames(wilcox_list_out_p005)
+Pathways_pickup=c("HALLMARK_OXIDATIVE_PHOSPHORYLATION","HALLMARK_E2F_TARGETS","WP_INTEGRATED_CANCER_PATHWAY","HALLMARK_MYOGENESIS","HALLMARK_EPITHELIAL_MESENCHYMAL_TRANSITION" ,"HALLMARK_IL2_STAT5_SIGNALING"  )
+Enrichment_plot_list=list()
+for (name in Pathways_pickup){
+  Pathway_name=name
+  P=fgsea::plotEnrichment(pathwaylist_all[[Pathway_name]], stats) + labs(title=Pathway_name)
+  Enrichment_plot_list[[name]]=P+theme_minimal() + theme(
+    axis.text.x = element_text(size = 18, angle = 0, hjust = 1, vjust = 1),
+    axis.text.y = element_text(size = 18),
+    legend.position = "none"
+  )
+}
+# 
+
+```
+
+```{r,fig.height=16,fig.width=28,include=T,out.width="80%"}
+cowplot::plot_grid(plotlist = Enrichment_plot_list,ncol=3)
+```
+
+
+
+
+```{r}
+knitr::knit_exit()
+```
+
+ 
+## OXFO 
+```{r,fig.width=24,fig.height=12,include=T}
+load(file.path(Reference_path,"Human_GSEA","GO_KEGGP_WP_C2CGP_Reactome_pathway_list.rdata"))
+Pathway_list_select= c("HALLMARK_OXIDATIVE_PHOSPHORYLATION","WP_MITOCHONDRIAL_COMPLEX_III_ASSEMBLY")
+```
+
+
+```{r,fig.width=24,fig.height=12,include=T}
+# install pathview package
+if (!requireNamespace("pathview", quietly = TRUE)) {
+  BiocManager::install("pathview")
+}
+
+library(pathview)
+library(KEGGREST)
+kegg_list <- KEGGREST::keggList("pathway", "hsa")
+KEGG_OXFO=kegg_list%>%.[grep("Oxidative",.)]
+```
+
+
+```{r}
+test_data <-Ttest_data[[1]]%>%dplyr::filter(gene_symbol%in%All_sig)  # Example: Use one of your T-test results
+# Run the pathview analysis
+Pathway_ID=names(KEGG_OXFO)
+Pathway_name=as.character(KEGG_OXFO)%>%strsplit(.,"-")%>%unlist()%>%.[1]%>%gsub(" ","",.)
+Outname=paste0("sh1_",Pathway_name,".png")%>%gsub(" ","_",.)
+#BiocManager::install("org.Hs.eg.db")
+pathview_result <- run_pathview_analysis(test_data, pathway_name=Pathway_name, pathway_id=Pathway_ID, output_dir=pathview_out,outname=Outname)
+
+```
+
+
+# shRNA-1 : using common different proteins
+```{r, out.width='100%', fig.align='center',include=T}
+png_file=file.path(pathview_out,Outname)
+knitr::include_graphics(png_file)
+```
+
+```{r}
+test_data <-Ttest_data[[2]]%>%dplyr::filter(gene_symbol%in%All_sig)  # Example: Use one of your T-test results
+# Run the pathview analysis
+Pathway_ID=names(KEGG_OXFO)
+Pathway_name=as.character( KEGG_OXFO)%>%strsplit(.,"-")%>%unlist()%>%.[1]%>%gsub(" ","",.)
+pathview_out=file.path(Rcode_path,"Pathview")
+Outname=paste0("sh3_",Pathway_name,".png")%>%gsub(" ","_",.)
+pathview_result <- run_pathview_analysis(test_data, pathway_name=Pathway_name, pathway_id=Pathway_ID, output_dir=pathview_out,outname=Outname)
+```
+
+
+# shRNA-3 : using common different proteins
+```{r, out.width='100%', fig.align='center',include=T}
+png_file=file.path(pathview_out,Outname)
+knitr::include_graphics(png_file)
+```
+
+```{r}
+Pathvisio_outpath= "./Pathvisio"
+dir.create(Pathvisio_outpath)
+getwd()
+Pathvisio_install_path="/Volumes/lyu.yang/pathvisio-3.3.0"
+wikipath=file.path(Pathvisio_install_path, "wikipathways-20241010-gpml-Homo_sapiens")
+output_path=file.path(Pathvisio_outpath,"OXFO")
+```
+
+```{r}
+test_data <-Ttest_data[[1]]
+Out_gex_file="sh1_gex.txt" 
+create_gex_file_EnID(test_data,output_file =Out_gex_file)
+```
+
+```{r}
+install.packages("rJava", type = "source")
+install.packages('rJava', type='source')
+pathway_index = "WP1471"
+gexdata=file.path(Pathvisio_outpath,Out_gex_file)
+visualizeData_2 (pathway=pathway_index, gexname=gexdata, dbname="Hs_Derby_Ensembl_91.bridge", host="localhost",  port=9000,Wikipath=wikipath, 
+                   gexpath=output_path,dbpath=Pathvisio_install_path, outputdir=output_path)
+
+```
+
+
+```{r}
+knitr::knit_exit()
+```
+ 
+ 
+

@@ -1,0 +1,4761 @@
+---
+title: "GIT2"
+subtitle: "Primary tumor"
+author: "Yang Lyu"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+header-includes:
+  - \usepackage[english]{babel}
+  - \usepackage{setspace}  \singlespacing
+indent: false 
+mainfont: Arial
+monofont: Arial
+fontsize: 12pt
+geometry: "left=3cm,right=3cm,top=2cm,bottom=2cm"
+
+output:
+  pdf_document:
+    keep_tex: true
+    latex_engine: pdflatex
+    fig_caption: yes
+    highlight: haddock
+    number_sections: yes
+    #latex_engine: xelatex
+    
+# knit: (
+#   function(inputFile, encoding) { 
+#     pSubTitle <- paste( Sys.Date(), "CHKIRC paper primary tumor part1" )
+# 
+#     rmarkdown::render( 
+#       input       = inputFile, 
+#       encoding    = encoding, 
+#       params      = list(sub_title = pSubTitle),      
+#       output_file = pSubTitle,
+#       output_dir="/Volumes/Data_2/Ubuntu-1_backup/R2/Project/4_CCRCC_Proteomics/Paper") 
+#        })
+# 
+# 
+#  
+
+---
+
+
+
+```{r,echo=F}
+
+      
+#install.packages('tinytex')
+#tinytex::install_tinytex() 
+
+# importing rstudioapi package
+# library("rstudioapi") 
+  
+# retrieving path from getSourceEditorContext() 
+# using $ operator 
+#rstudioapi::getSourceEditorContext()$path 
+```
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F,include=F,message = F,warning=F)
+```
+
+```{r}
+rm(list=ls())
+```
+
+```{r,include=F}
+Rcode_path=getwd()
+Path=strsplit(Rcode_path,"/R/Rcode")[[1]][1]
+Rdata_path=file.path(Path,"Rdata")
+Rawdata_path=file.path(Path,"Rawdata")
+Out_table_path=file.path(Path,"Out","table")
+dir.create(Out_table_path,recursive = T)
+#NC_Rawdata_path=file.path(Path,"Raw_data","NC_230")
+Out_table_path=file.path(Path,"Out","table")
+Reference_path="/Volumes/lyu.yang/MAC_1/R/Public_database/Reference"
+load(file.path(Reference_path,"Human_GSEA","GO_KEGGP_WP_C2CGP_Reactome_pathway_list.rdata"))
+
+
+
+library(dplyr)
+
+library(ggplot2)
+
+```
+
+
+```{r}
+matrix.please<-function(x) {
+  m<-as.matrix(x[,-1])
+  rownames(m)<-x[,1]
+  m
+}
+
+pheatmap_pathway_NES<- function (expression_data,pathway_name) {
+   Color = colorRampPalette(c("blue", "white", "red"))(50)
+#  paletteLength <- 50
+   # NES_breaks <- c(seq(min(test), 0, length.out=ceiling(paletteLength/2) + 1), 
+   #            seq(max(test)/paletteLength, max(test), length.out=floor(paletteLength/2)))
+   #NES_breaks <- c(seq(-3, 0, length.out=ceiling(paletteLength/2) + 1),
+              # seq(3/paletteLength, 3, length.out=floor(paletteLength/2)))
+   NES_breaks = seq(-3, 3, length.out =50)
+  
+   pheatmap::pheatmap(expression_data, cellwidth=20, cellheight = 10, scale = "none",color = Color,
+                                    treeheight_row = 5,main=pathway_name,
+                                    show_rownames = T,show_colnames = T,
+                                    #annotation_col= Annotation,
+                                    # annotation_row=Annotation,
+                                    #annotation_legend=Label_def,
+                                    cluster_rows = T,  cluster_cols = F,clustering_distance_rows = "euclidean",breaks=NES_breaks)
+  
+}
+
+Valcano_plot_new_2=function(Data,Pathway_list,pathway_name){
+  pathway_genes=Pathway_list [[pathway_name]]%>%as.character()
+ 
+  library(ggrepel)
+  Data=Data%>%.[.$gene_symbol%in%pathway_genes,]
+  # add a column of NAs
+  de=Data %>%mutate(diffexpressed=ifelse(pvalue>0.05|abs(log2Foldchange)<0.26,"NO",ifelse(log2Foldchange>0,"UP","DOWN")))
+  de$delabel <- NA
+  de$delabel[de$diffexpressed != "NO"] <- de$gene_symbol[de$diffexpressed != "NO"]
+  
+  # plot adding up all layers we have seen so far
+  ggplot(data=de, aes(x=log2Foldchange, y=-log10(pvalue), col=diffexpressed, label=delabel)) +
+    geom_point() + ggtitle(pathway_name)+
+    theme_minimal() +
+    geom_text_repel(max.overlaps = Inf ) +
+    scale_color_manual(values=c("DOWN"="blue", "NO"= "black","UP"= "red")) +
+    geom_vline(xintercept=c(-0.26, 0.26), col="red") +
+    geom_hline(yintercept=-log10(0.05), col="red")
+  
+  
+  
+  
+}
+
+
+Valcano_plot_genelist=function(Data,Pathway_list,pathway_name_list,Combined_path_name,Genelist){
+  
+   name_list=list()
+  for (i in 1:length(pathway_name_list)){
+    pathway_name=pathway_name_list[i]
+    pathway_genes=Pathway_list[[pathway_name]]%>%as.character()
+    name_list[[i]]=pathway_genes
+  }
+   
+  pathway_genes=unlist(name_list) %>%as.character() %>%unique()
+  # return(pathway_genes)
+  library(ggrepel)
+  Data=Data%>%.[.$gene_symbol%in%pathway_genes,]
+  # add a column of NAs
+  de=Data %>%mutate(diffexpressed=ifelse(pvalue>0.05,"NO",ifelse(log2Foldchange>0,"UP","DOWN")))
+  de$delabel <- NA
+  de$delabel[de$diffexpressed != "NO"] <- de$gene_symbol[de$diffexpressed != "NO"]
+
+  name_list=list()
+   for (i in 1:length(pathway_name_list)){
+    pathway_name=pathway_name_list[i]
+    pathway_genes=Pathway_list[[pathway_name]]%>%as.character()
+    name_list[[i]]=pathway_genes
+  }
+  pathway_genes=unlist(name_list) %>%as.character() %>%unique()
+  # return(pathway_genes)
+  library(ggrepel)
+  Data=Data%>%.[.$gene_symbol%in%pathway_genes,]
+   
+  # add a column of NAs
+  de=Data %>%mutate(diffexpressed=ifelse(pvalue>0.05,"NO",ifelse(log2Foldchange>0,"UP","DOWN")))
+  de$delabel <- NA
+  de$delabel[de$diffexpressed != "NO"] <- de$gene_symbol[de$diffexpressed != "NO"]
+  
+  # plot adding up all layers we have seen so far
+  ggplot(data=de, aes(x=log2Foldchange, y=-log10(pvalue), col=diffexpressed, label=delabel)) +
+    geom_point() + 
+    theme_minimal() +
+    geom_text_repel(data=de%>%.[.$gene_symbol%in%Genelist,],force_pull=0 ,box.padding = 0.15,max.overlaps=Inf,segment.color="grey50") +
+    scale_color_manual(values=c("blue", "black", "red")) +
+    geom_vline(xintercept=c(-0.6, 0.6), col="red") +
+    geom_hline(yintercept=-log10(0.05), col="red")
+  
+  
+  
+  
+  
+  
+}
+
+# GSEA GO_KEGGP_WP_C2CGP_Reactome_pathway
+ 
+load(file.path(Reference_path,"Human_GSEA","GO_KEGGP_WP_C2CGP_Reactome_pathway_list.rdata"))
+
+Enrich_dotplot=function(FGSEA_out){
+  library(ggbreak)
+  FGSEA_out$NES=round(FGSEA_out$NES,2)
+  #mycolor=RColorBrewer::brewer.pal(3,"YlOrRd")
+  data=FGSEA_out%>%mutate(Norm_padj=-log10(padj))%>%mutate(State=ifelse(NES>0&padj<0.05,"Activated",ifelse(NES<0&padj<0.05,"Inhibited", ifelse(NES>0&padj<0.07,"P_Activated",ifelse(NES<0&padj<0.07,"P_Inhibited","no_change")))))%>%arrange(desc(NES))
+  # Up_data=data%>%dplyr::filter(NES>0)%>%arrange(NES)
+  #   DN_data=data%>%dplyr::filter(NES<0)
+  #   data=rbind(DN_data,Up_data)
+  # data$pathway=factor(data$pathway,levels =data$pathway )
+  MAX_NES=max(data$NES)%>%ceiling()
+  min_NES=min(data$NES)%>%floor()
+  # ggplot(data) +geom_point(aes(x = NES, y = pathway, color = -log10(padj),size=gene_counts))+scale_size("gene_counts") +
+  color_set= setNames(c('red','green',"wheat","turquoise" ,'grey'),c("Activated", "Inhibited","P_Activated","P_Inhibited","no_change"))
+ 
+  P= ggplot(data) +geom_point(aes(x = NES, y = pathway, color =State ,size=Norm_padj)) +
+     theme_bw() +labs(x="Normalized enrichment score",y="")+
+      theme(axis.text.x = element_text(size=rel(1.15)),
+        axis.title = element_text(size=rel(1.15)),plot.title = element_text(hjust=0.5, 
+      	face = "bold"),legend.title = element_text(size=rel(1.15),hjust=0.5, face="bold"),axis.text.y = element_text(size =15))+
+    scale_size_continuous (name="-log10(padj)",range=c(1,12))+scale_color_manual(name="State",values=color_set)+facet_wrap(~Group,nrow=1)
+  # if (min_NES>0|MAX_NES<0) {
+  #   return(P)
+  #   } else {
+  #   Breaks=c(min_NES,-1,1,MAX_NES)
+  #  return(P+scale_x_break(c(-1, 1), scales = 1.5))
+ # xlab("Normalized enrichment score") +ylab("")+scale_x_break(c(-1, 1), scales = 1.5)
+ #   }
+}
+
+
+
+Enrich_dotplot_pval=function(FGSEA_out){
+  library(ggbreak)
+  FGSEA_out$NES=round(FGSEA_out$NES,2)
+  #mycolor=RColorBrewer::brewer.pal(3,"YlOrRd")
+  data=FGSEA_out%>%mutate(Norm_pval=-log10(pval))%>%mutate(State=ifelse(NES>0&pval<0.05,"Activated",ifelse(NES<0&pval<0.05,"Inhibited", ifelse(NES>0&pval<0.07,"P_Activated",ifelse(NES<0&pval<0.07,"P_Inhibited","no_change")))))%>%arrange(desc(NES))
+
+  Up_data=data%>%dplyr::filter(NES>0)%>%arrange(NES)
+  DN_data=data%>%dplyr::filter(NES<0)
+  data=rbind(DN_data,Up_data)
+  data$pathway=factor(data$pathway,levels=unique(data$pathway ))
+  MAX_NES=max(data$NES)%>%ceiling()
+  min_NES=min(data$NES)%>%floor()
+  # ggplot(data) +geom_point(aes(x = NES, y = pathway, color = -log10(pval),size=gene_counts))+scale_size("gene_counts") +
+  color_set= setNames(c('red','green',"wheat","turquoise" ,'grey'),c("Activated", "Inhibited","P_Activated","P_Inhibited","no_change"))
+ 
+  P= ggplot(data) +geom_point(aes(x = NES, y = pathway, color =State ,size=Norm_pval)) +
+     theme_bw() +labs(x="Normalized enrichment score",y="")+
+      theme(axis.text.x = element_text(size=rel(1.15)),
+        axis.title = element_text(size=rel(1.15)),plot.title = element_text(hjust=0.5, 
+      	face = "bold"),legend.title = element_text(size=rel(1.15),hjust=0.5, face="bold"),axis.text.y = element_text(size =15))+
+    scale_size_continuous (name="-log10(pval)",range=c(2,12))+scale_color_manual(name="State",values=color_set) 
+  P+facet_wrap(~Group,nrow=1)
+  # if (min_NES>0|MAX_NES<0) {
+  #   return(P)
+  #   } else {
+  #   Breaks=c(min_NES,-1,1,MAX_NES)
+  #  return(P+scale_x_break(c(-1, 1), scales = 1.5))
+ # xlab("Normalized enrichment score") +ylab("")+scale_x_break(c(-1, 1), scales = 1.5)
+ #   }
+}
+
+
+merge_and_rename_genes_list <- function(pathway_out) {
+ Out_2 <- data.frame()
+  
+  for (name in names(pathway_out)) {
+    pathway_data <- pathway_out[[name]]
+    pathway_name <- pathway_data$Term_Description[1]
+    
+    all_genes <- c()
+    
+    for (i in 1:nrow(pathway_data)) {
+      sample <- pathway_data[i, ]
+      
+      Up_regulated <- unlist(strsplit(sample$Up_regulated, ", "))
+      Down_regulated <- unlist(strsplit(sample$Down_regulated, ", "))
+      
+      all_genes <- unique(c(all_genes, Up_regulated, Down_regulated))
+    }
+    
+    for (i in 1:nrow(pathway_data)) {
+      sample <- pathway_data[i, ]
+      
+      Up_regulated <- unlist(strsplit(sample$Up_regulated, ", "))
+      Down_regulated <- unlist(strsplit(sample$Down_regulated, ", "))
+      
+      no_change <- setdiff(all_genes, c(Up_regulated, Down_regulated))
+      
+      sample$group <- name
+      sample$no_change <- toString(no_change)
+      
+      Out_2 <- rbind(Out_2, sample)
+    }
+  }
+  
+  Out_2$Term_Description <- toupper(Out_2$Term_Description)
+  return(Out_2)
+}
+
+pheatmap_pathway_3<- function (expression_data, Gene_select,pathway_name,Annotation) {
+ # Gene_select<-Pathway_list[,pathway_name]%>%unique()
+  Gene_select_anno= expression_data[Gene_select,] 
+  pheatmap::pheatmap(Gene_select_anno, cellwigermline= 2, cellheight =10, scale = "row",
+                     treeheight_row = 5,main=pathway_name,
+                     show_rownames = T,show_colnames = F,
+                     annotation_col= Annotation,
+                     # annotation_row=Annotation,
+                     #annotation_legend=Label_def,
+                     cluster_rows = T,  cluster_cols = F,clustering_distance_rows = "euclidean")
+  
+}
+
+DEGs_heatmap <- function(pathway_data) {
+  # Extract gene names
+  genes <- unique(unlist(strsplit(pathway_data$Up_regulated, ", ")))
+  genes <- union(genes, unlist(strsplit(pathway_data$Down_regulated, ", ")))
+  
+  # Initialize list to store expression matrices for each sample
+  expression_matrix <- list()
+  
+  # Fill expression matrix with expression values for each sample
+  for (i in 1:nrow(pathway_data)) {
+    sample <- pathway_data[i, ]
+    upregulated <- unlist(strsplit(sample$Up_regulated, ", "))
+    downregulated <- unlist(strsplit(sample$Down_regulated, ", "))
+    no_change <- unlist(strsplit(sample$no_change, ", "))
+    
+    for (I in sample$group ) {
+    DATA=sample%>%dplyr::filter(group==I)
+    # Create matrix for current sample
+    sample_matrix <- matrix(0, nrow = length(genes), ncol = 1)
+    rownames(sample_matrix) <- genes
+    colnames(sample_matrix) <-I  # Assign group names as column names
+    upregulated_genes=unlist(strsplit(DATA$Up_regulated, ", "))
+    downregulated_genes <- unlist(strsplit(DATA$Down_regulated, ", "))
+    # Fill sample matrix with expression values
+    for (gene_index in 1:length(genes)) {
+      gene <- genes[gene_index]
+      if (gene %in% upregulated_genes) {
+        sample_matrix[gene, I] <- 1
+      } else if (gene %in% downregulated_genes) {
+        sample_matrix[gene, I] <- -1
+      }
+    }
+    
+    } 
+   
+    # Store sample matrix in the list
+    expression_matrix[[i]] <- sample_matrix
+  }
+  
+  # Merge expression matrices using cbind
+  merged_matrix <- do.call(cbind, expression_matrix)
+ 
+  # Create heatmap
+  OUT=pheatmap::pheatmap(merged_matrix,
+           cluster_rows = TRUE,  # Cluster rows (genes)
+           cluster_cols = FALSE,
+           color = c("blue", "grey", "red"),
+           breaks = c(-0.9, -0.1, 0.9),
+           scale = "none",cellheight =10,   treeheight_row = 5,legend = F,
+           main = paste("Heatmap for", unique(pathway_data$Term_Description)))
+}
+
+
+Term_gene_graph_3_update=function (result_df, num_terms = 10, layout = "stress", use_description = FALSE, 
+      node_size = "num_genes", node_colors = c("#E5D7BF", "green", "red", "grey"),facet_variable = NULL) {
+  # For paired plot
+  
+  if (!is.numeric(num_terms) & !is.null(num_terms)) {
+    stop("`num_terms` must either be numeric or NULL!")
+  }
+  if (!is.logical(use_description)) {
+    stop("`use_description` must either be TRUE or FALSE!")
+  }
+  ID_column <- ifelse(use_description, "Term_Description", 
+                      "ID")
+  val_node_size <- c("num_genes", "p_val")
+  if (!node_size %in% val_node_size) {
+    stop("`node_size` should be one of ", paste(dQuote(val_node_size), 
+                                                collapse = ", "))
+  }
+  if (!is.data.frame(result_df)) {
+    stop("`result_df` should be a data frame")
+  }
+  necessary_cols <- c(ID_column, "lowest_p", "Up_regulated", 
+                      "Down_regulated", "no_change","group")  # Include "no_change"
+  if (!all(necessary_cols %in% colnames(result_df))) {
+    stop(paste(c("All of", paste(necessary_cols, collapse = ", "), 
+                 "must be present in `results_df`!"), collapse = " "))
+  }
+  if (length(node_colors) != 4) {  # Corrected length check
+    stop("`node_colors` must contain exactly 4 colors")  # Updated error message
+  }
+  if (!is.null(num_terms)) {
+    if (nrow(result_df) < num_terms) {
+      num_terms <- NULL
+    }
+  }
+Group=unique(result_df$group)
+ 
+####################
+glist=list()
+input=result_df
+for (G in Group)    {
+ result_df<- input[order(input$Term_Description, decreasing = FALSE),  ]%>%dplyr::filter(group==G)
+  if (!is.null(num_terms)) {
+        result_df <- result_df[1:num_terms, ]
+    }
+  graph_df <- data.frame()
+  for (i in base::seq_len(nrow(result_df))) {
+        up_genes <- unlist(strsplit(result_df$Up_regulated[i], 
+            ", "))
+        down_genes <- unlist(strsplit(result_df$Down_regulated[i], 
+            ", "))
+        
+        no_change= unlist(strsplit(result_df$no_change[i], 
+            ", "))
+        
+        for (gene in c(up_genes, down_genes,no_change)) {
+            graph_df <- rbind(graph_df, data.frame(Term = result_df[i, 
+                ID_column], Gene = gene))%>%arrange(Gene)
+        }
+   }
+  up_genes <- unlist(lapply(result_df$Up_regulated, function(x) strsplit(x, ", ")))
+  DN_genes=  unlist(lapply(result_df$Down_regulated, function(x) strsplit(x, ", ")))
+  
+  g <- igraph::graph_from_data_frame(graph_df, directed = FALSE)
+  cond_term <- names(igraph::V(g)) %in% result_df[, ID_column]
+  cond_up_gene <- names(igraph::V(g)) %in% up_genes
+  cond_down_gene=  names(igraph::V(g)) %in% DN_genes
+  node_type <- ifelse(cond_term, "term", 
+                      ifelse(cond_up_gene, "up", 
+                             ifelse(cond_down_gene, "down", "no_change")))
+  node_type <- factor(node_type, levels = c("term", "up", "down", "no_change"))
+  node_type <- factor(node_type, levels = c("term", "up", "down","no_change"))
+    igraph::V(g)$type <- node_type
+  type_descriptions <- c(term = "enriched term", up = "up-regulated gene", 
+                         down = "down-regulated gene", no_change = "no_change gene")  # Include "no_change" description
+   type_descriptions <- type_descriptions[levels(node_type)]
+   names(node_colors) <- c("term", "up", "down", "no_change")  # Added "no_change"
+   node_colors <- node_colors[levels(node_type)]
+     if (node_size == "num_genes") {
+        sizes <- igraph::degree(g)
+        sizes <- ifelse(igraph::V(g)$type == "term", sizes, 2)
+        size_label <- "# genes"
+     }
+     else {
+        idx <- match(names(igraph::V(g)), result_df[, ID_column])
+        sizes <- -log10(result_df$lowest_p[idx])
+        sizes[is.na(sizes)] <- 2
+        size_label <- "-log10(p)"
+     }
+     
+    igraph::V(g)$size <- sizes
+    igraph::V(g)$label.cex <- 0.5
+    igraph::V(g)$frame.color <- "gray"
+    glist[[G]]=g
+ }    
+ 
+##################################################
+
+plist=list()
+  
+for (s in Group) {
+   g=glist[[s]]
+    #xy <- graphlayouts::layout_with_stress(glist[[1]])
+    p <- ggraph::ggraph(g, layout = layout)
+    
+    p <- p + ggraph::geom_edge_link(alpha = 0.8, colour = "darkgrey")
+    p <- p + ggraph::geom_node_point(ggplot2::aes(color = .data$type, 
+        size = .data$size))
+    p <- p + ggplot2::scale_size(range = c(5, 10), breaks = round(seq(round(min(igraph::V(g)$size)), 
+        round(max(igraph::V(g)$size)), length.out = 4)), name = size_label)
+    p <- p + ggplot2::theme_void()
+    p <- p + suppressWarnings(ggraph::geom_node_text(ggplot2::aes(label = .data$name), 
+        nudge_y = 0.2, repel = TRUE, max.overlaps = 20))
+    p <- p + ggplot2::scale_color_manual(values = node_colors, 
+        name = NULL, labels = type_descriptions)
+    if (is.null(num_terms)) {
+        p <- p + ggplot2::ggtitle("Term-Gene Graph")
+    }
+    else {
+        p <- p + ggplot2::ggtitle("Term-Gene Graph", subtitle = paste(c("Top", 
+            num_terms, "terms"), collapse = " "))
+    }
+    p <- p + ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5), 
+        plot.subtitle = ggplot2::element_text(hjust = 0.5))+ggtitle(s)
+    plist[[s]]=p
+}
+  
+  return(plist)
+}
+
+
+GSEA_heatmap=function(GSEA_Data,Annotation_col,Annotation_color,Title) {
+  pheatmap:: pheatmap(GSEA_Data,cluster_cols = F,
+         scale = "row",  # Scale rows (genes)
+         clustering_method = "complete",  # Hierarchical clustering method
+         color = colorRampPalette(c("blue", "white", "red"))(50),  # Color palette
+         main = Title,  # Title
+          gaps_col = c(3,3,8),annotation_col = Annotation_col,
+         annotation_colors =Annotation_color,
+         fontsize = 8,  # Font size for labels
+         cellwidth = 15,  # Width of each cell
+         cellheight = 15,  # Height of each cell
+         show_rownames = T,  # Show row names (gene names)
+         show_colnames = TRUE  # Show column names (sample names)
+)
+}
+
+singcore_GSEA=function (data,genelist, is.na=T) {
+  nm=names(genelist)
+  plist=list()
+  Data_prepare=singscore::rankGenes (data)
+  
+  for (i in seq_along(genelist)) { 
+    Genes=genelist[[i]]%>%as.character()
+    scoredf<- singscore::simpleScore (Data_prepare, upSet=unique(Genes))%>%.[1]
+    colnames(scoredf)=paste0(nm[i],"_singscore")
+    plist[[i]]=scoredf
+  }
+  output=do.call("cbind",plist)
+}
+Self_define_term=function(Pathway_names,Pathway_Data,Gene_input){
+  necessary_cols <- c("Term_Description", "lowest_p", "Up_regulated", 
+                      "Down_regulated", "no_change","group")
+  out=list()
+  colnames(Gene_input)[grepl("log",colnames(Gene_input))]="logFC"
+  colnames(Gene_input)[grepl("pv",colnames(Gene_input))]="pvalue"
+  colnames(Gene_input)[grepl("symbol",colnames(Gene_input))]="Gene.symbol"
+  for(i in Pathway_names){
+    Gene_in_pathway=Pathway_Data[[i]]%>%as.character()
+    #Gene_list=Gene_input%>%dplyr::filter(Gene.symbol%in%Gene_in_pathway)%>%mutate(Change=ifelse(logFC>0.27&pvalue<0.05,"Up_regulated",ifelse(abs(logFC)>0.27&pvalue<0.05,"Down_regulated","no_change")))
+    Gene_list=Gene_input%>%dplyr::filter(Gene.symbol%in%Gene_in_pathway)%>%dplyr::filter(pvalue<0.05&abs(logFC)>0.27)%>%mutate(Change=ifelse(logFC>0.27,"Up_regulated","Down_regulated"))
+    Up_Genes=Gene_list%>%dplyr::filter(Change=="Up_regulated")
+    DN_Genes=Gene_list%>%dplyr::filter(Change!="Up_regulated")
+    Gene_anno=data.frame(Term_Description=i,lowest_p=NA,Up_regulated=toString (Up_Genes$Gene.symbol, collapse = ", "),
+                         Down_regulated=toString  (DN_Genes$Gene.symbol, collapse = ", "))
+    out[[i]]=Gene_anno
+    
+  }
+  out_all=do.call("rbind",out)
+}
+
+
+
+merge_and_rename_genes <- function(pathway_out_1, pathway_out_2,group1_name="Group1",group2_name="Group2") {
+  Out_2 <- data.frame()
+  
+  # Add missing genes column and rename for pathway_out_1
+  for (pathway_name in pathway_out_1$Term_Description) {
+    # Extract genes for the current pathway
+    Data1 <- pathway_out_1 %>% 
+      dplyr::filter(Term_Description == pathway_name) %>% 
+      mutate(group = group1_name)
+    
+    Data2 <- pathway_out_2 %>% 
+      dplyr::filter(Term_Description == pathway_name) %>% 
+      mutate(group = group2_name)
+ 
+    # Split Up_regulated and Down_regulated by ","
+    Data1_Up_regulated <- stringr::str_split(Data1$Up_regulated, ", ")%>%unlist() %>%as.character()
+    Data1_Down_regulated <- stringr::str_split(Data1$Down_regulated, ", ")%>%unlist() %>%as.character()
+    Data2_Up_regulated <- stringr::str_split(Data2$Up_regulated, ", ")%>%unlist() %>%as.character()
+    Data2_Down_regulated <- stringr::str_split(Data2$Down_regulated, ", ")%>%unlist() %>%as.character()
+    
+    # Merge genes for pathway_out_1 and pathway_out_2 for the current pathway
+    merged_genes_1 <- c(Data1_Up_regulated, Data1_Down_regulated)
+    merged_genes_2 <- c(Data2_Up_regulated, Data2_Down_regulated)
+    all_genes=unique(c(merged_genes_1,merged_genes_2))
+   
+    missing_1 <- setdiff( all_genes, merged_genes_1)
+ 
+    Data1$no_change <- toString  (missing_1, collapse = ", ")
+ 
+    missing_genes_2 <- setdiff( all_genes, merged_genes_2)
+    Data2$no_change <- toString(missing_genes_2,collapse = ", ")
+    
+    out <- rbind(Data1, Data2)
+    Out_2 <- rbind(Out_2, out)
+  }
+  Out_2$Term_Description=toupper(Out_2$Term_Description)
+  return(Out_2)
+}
+```
+
+
+
+```{r,include=F}
+# Rcode_path=getwd()
+# Path=gsub("/Rcode","",Rcode_path)
+# Rdata_path=file.path(Path,"Rdata")
+# Rawdata_path=file.path(Path,"Raw_data")
+# 
+# NC_Rawdata_path=file.path(Path,"Raw_data","NC_230")
+
+
+#install.packages("ggtext")
+#install.packages("survminer")
+
+#source( file.path(R_function_path, "RNAseq_pipeline.R"))
+
+```
+
+
+
+# CHKIRC data (54 samples): primary and invasion group in Type1 and Type2, GSEA anlaysis 
+
+*Capsular invasion could activte EMT pathway, glycolysis, Hypoxia pathways in Type1. But it has minor efect on type2 becuase these pathways have been activated in primary tumor*
+
+```{r}
+Project_rawdata_path=file.path(Rawdata_path,"CHKIRC","Proteomics")
+
+Pro_log_data=read.table(file.path(Rawdata_path,"CHKIRC","Proteomics","54_Proteomics_T&N_ratio.txt"),fill=T)
+clinical_54_data_2=read.table(file.path(Out_table_path,"CHKIRC_subtype_clinial"),header = T,check.names = T,sep=",")%>%as.data.frame() %>%mutate(Subtype2=gsub("CHKIRC_","",Subtype) ) %>%mutate(Subtype2=paste0(Capsular_invasion,"_",Subtype2))%>%mutate(Subtype2=gsub("Y","CHKIRC_Invasion",Subtype2) )%>%mutate(Subtype2=gsub("N","CHKIRC_Primary",Subtype2) )%>%mutate(Subtype=Subtype2)
+
+
+clinical_54_data_2$Subtype=factor(clinical_54_data_2$Subtype,levels=c("CHKIRC_Primary_subtype1","CHKIRC_Invasion_subtype1","CHKIRC_Primary_subtype2" ,"CHKIRC_Invasion_subtype2" ))
+primary_Type1_anno=clinical_54_data_2%>%dplyr::filter(Subtype=="CHKIRC_Primary_subtype1")
+primary_Type2_anno=clinical_54_data_2%>%dplyr::filter(Subtype=="CHKIRC_Primary_subtype2")
+Invasion_Type1_anno=clinical_54_data_2%>%dplyr::filter(Subtype=="CHKIRC_Invasion_subtype1")
+Invasion_Type2_anno=clinical_54_data_2%>%dplyr::filter(Subtype=="CHKIRC_Invasion_subtype2")
+
+Pro_log_data_rearrange=Pro_log_data[,c(primary_Type1_anno$Sample_ID,Invasion_Type1_anno$Sample_ID,primary_Type2_anno$Sample_ID,Invasion_Type2_anno$Sample_ID)]
+Pro_log_data_rearrange_anno=clinical_54_data_2[,c("Sample_ID","Subtype")]%>%matrix.please()%>%as.data.frame()%>%setNames("Subtype")
+# Singscore data
+load (file.path(Rawdata_path,"CHKIRC","Proteomics","54_Singscore.rdata"  ))
+cbp1 <- c("#999999", "#E69F00", "#56B4E9", "#009E73",
+          "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+
+# The palette with black:
+cbp2 <- c("#000000", "#E69F00", "#56B4E9", "#009E73",
+          "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+subtype_color_2=cbp1[c(4,2,3,5)]
+ann_colors=list(Subtype=subtype_color_2)
+```
+
+```{r}
+Primary_type1_proteomics_data=Pro_log_data
+Ttest_list=list()
+Subtype=unique(clinical_54_data_2$Subtype)%>%sort()
+for (  i in Subtype){
+  
+  samples=clinical_54_data_2%>%dplyr::filter(Subtype==i)%>%.$Sample_ID
+  Data=Pro_log_data%>%.[,samples]
+  Ttest=t(Data)%>%as.data.frame() %>%apply(2,function (x) (t.test(x))$p.value )%>%unlist()%>%as.data.frame()%>%setNames("pvalue") %>%mutate(padj=p.adjust(pvalue))
+ Mean_log=t(Data)%>%as.data.frame()%>%apply(2,function (x) mean(x))
+ Ttest_padj005=Ttest %>% mutate(log2Foldchange=Mean_log) %>%dplyr::filter(padj<0.05)
+  Ttest_list[[i]]=Ttest %>% mutate(log2Foldchange=Mean_log)%>%mutate(gene_symbol=rownames(.))
+
+}
+
+
+```
+
+# GSEA (C2 and hallmark)
+
+```{r}
+# GSEA (C2 and hallmark)
+if (!file.exists(file.path(Project_rawdata_path,"FGSEA_data.rdata"))){
+GMT_files=list.files(file.path(Reference_path,"Human_GSEA"),pattern="all.v7.5.1.symbols.gmt.txt",full.names = T)%>%.[grepl("c2|c5|h",.)]
+Fgsea_output=list()
+for ( i in names(Ttest_list) ){
+  res_p005=Ttest_list[[i]]%>%dplyr::filter(pvalue<0.05)
+  res_p005_rank=res_p005%>%arrange(log2Foldchange) %>%.[c("log2Foldchange")]%>%as.data.frame() %>%tibble::rownames_to_column()%>%na.omit()
+  
+  ranks <- tibble::deframe(res_p005_rank)
+
+ fgsea_list=list()
+ for (k in GMT_files){
+    name=gsub(".*/","",k)
+    name2=gsub(".symbols.gmt.txt","",name)
+    pathway= fgsea::gmtPathways(k)
+    fgseaRes <- fgsea::fgseaMultilevel(pathway, ranks,
+                           minSize=5,
+                           maxSize=500,nPermSimple = 10000,eps = 0
+                           )
+    fgsea_list[[name2]]=fgseaRes%>%mutate(Group=i)
+
+}
+
+Fgsea_output[[i]]=do.call("rbind",fgsea_list)
+  
+}
+save(Fgsea_output,file=file.path(Project_rawdata_path,"FGSEA_data.rdata"))
+} else{
+  load(file.path(Project_rawdata_path,"FGSEA_data.rdata"))
+}
+
+FGSEA_list=do.call("rbind",Fgsea_output)
+FGSEA_list$Group=factor(FGSEA_list$Group,levels = levels(clinical_54_data_2$Subtype))
+
+```
+
+
+```{r}
+# NES data with Common pathways
+
+# generate data set by using common pathways in four NES data from subtypes  
+colnames(Fgsea_output[[1]])
+all_Common_pathways=Reduce(intersect,lapply(Fgsea_output, function(x) x$pathway )   )
+
+all_pathways=lapply(Fgsea_output, function(x) x$pathway )%>%unlist()%>%as.character() %>%as.data.frame()%>%setNames("pathway")%>%unique
+All_NES_pvalue=lapply(Fgsea_output, FUN= function(x) x%>%as.data.frame()%>%dplyr::filter(pathway%in%all_Common_pathways)%>%.[c("pathway","NES","pval")]%>%matrix.please()%>%as.data.frame())%>%do.call("cbind",.)
+
+#%>%setNames(names(Fgsea_output)) 
+
+All_NES=lapply(Fgsea_output, FUN= function(x) x%>%as.data.frame()%>%dplyr::filter(pathway%in%all_Common_pathways)%>%.[c("pathway","NES")]%>%matrix.please()%>%as.data.frame())%>%do.call("cbind",.)%>%setNames(names(Fgsea_output)) 
+Fgsea_output$CHKIRC_Primary_type1
+
+ALL_NES_imput=lapply(Fgsea_output, FUN= function(x) all_pathways%>%left_join(.,x[,c("pathway","NES","pval")])%>%mutate(NES=ifelse(is.na(NES),0,NES))%>%mutate(pval=ifelse(is.na(pval),1,pval))%>%matrix.please())%>%do.call("cbind",.)%>%as.data.frame()
+
+
+colnames(ALL_NES_imput)=sapply(names(Fgsea_output),function(x) paste0(x,c("_NES","_pval")) )%>%as.character()
+ 
+rownames(ALL_NES_imput)%>%.[grepl("\\.",.)]
+```
+
+
+
+```{r}
+# Differential pathways by pvalue cutoff
+# Sig_pathways=lapply(Fgsea_output, FUN= function(x) x%>%dplyr::filter(pval<0.05)%>%.$pathway ) %>%unlist()%>%as.character()%>%unique()
+# Common_pathways=Reduce(intersect,lapply(Fgsea_output, function(x) x%>%dplyr::filter(pathway%in%Sig_pathways)%>%.$pathway )   )
+# Sig_NES=lapply(Fgsea_output, FUN= function(x) x%>%as.data.frame()%>%dplyr::filter(pathway%in%Common_pathways)%>%.[c("pathway","NES")]%>%matrix.please()%>%as.data.frame())%>%do.call("cbind",.)%>%setNames(names(Fgsea_output))
+# 
+# Subtype2_sig=ALL_NES_imput%>%.[,grepl("subtype2",colnames(.))]%>%mutate(NES_FC=CHKIRC_Invasion_subtype2_NES/CHKIRC_Primary_subtype2_NES
+# )  %>%dplyr::filter((CHKIRC_Primary_subtype2_pval<0.05&CHKIRC_Invasion_subtype2_pval<0.05)|CHKIRC_Invasion_subtype2_pval<0.05&CHKIRC_Primary_subtype2_pval>0.05 )%>%mutate(pathway=rownames(.))%>%dplyr::filter(NES_FC<0|NES_FC>1.3|NES_FC<0.77) %>%dplyr::filter(grepl("WP|KEGG|REACTOME|HALLMARK",pathway))%>%dplyr::filter(!is.infinite(NES_FC)&NES_FC!=0)
+# 
+# Subtype1_sig=ALL_NES_imput%>%.[,grepl("subtype1",colnames(.))]%>%mutate(NES_FC=CHKIRC_Invasion_subtype1_NES/CHKIRC_Primary_subtype1_NES)%>%mutate(pathway=rownames(.))%>%
+#   dplyr::filter((CHKIRC_Primary_subtype1_pval<0.05&CHKIRC_Invasion_subtype1_pval>0.05)|CHKIRC_Invasion_subtype1_pval<0.05&CHKIRC_Primary_subtype1_pval>0.05 )%>%dplyr::filter(NES_FC<0|NES_FC>1.3|NES_FC<0.77)%>%dplyr::filter(grepl("KEGG|WP|HALLMARK|REACTOME",pathway))%>%dplyr::filter(!is.infinite(NES_FC)&NES_FC!=0)
+```
+
+
+```{r}
+# Differential pathways by padj cutoff
+all_pathways_apdj=lapply(Fgsea_output, function(x) x$pathway )%>%unlist()%>%as.character() %>%as.data.frame()%>%setNames("pathway")%>%unique
+All_NES_padj=lapply(Fgsea_output, FUN= function(x) x%>%as.data.frame()%>%dplyr::filter(pathway%in%all_Common_pathways)%>%.[c("pathway","NES","padj")]%>%matrix.please()%>%as.data.frame())%>%do.call("cbind",.)
+
+ALL_NES_imput_padj=lapply(Fgsea_output, FUN= function(x) all_pathways%>%left_join(.,x[,c("pathway","NES","padj")])%>%mutate(NES=ifelse(is.na(NES),0,NES))%>%mutate(padj=ifelse(is.na(padj),1,padj))%>%matrix.please())%>%do.call("cbind",.)%>%as.data.frame()
+
+
+colnames(ALL_NES_imput_padj)=sapply(names(Fgsea_output),function(x) paste0(x,c("_NES","_padj")) )%>%as.character()
+ 
+rownames(ALL_NES_imput_padj)%>%.[grepl("\\.",.)]
+
+Sig_pathways_padj=lapply(Fgsea_output, FUN= function(x) x%>%dplyr::filter(padj<0.05)%>%.$pathway ) %>%unlist()%>%as.character()%>%unique()
+Common_pathways=Reduce(intersect,lapply(Fgsea_output, function(x) x%>%dplyr::filter(pathway%in%Sig_pathways_padj)%>%.$pathway )   )
+Sig_NES_padj=lapply(Fgsea_output, FUN= function(x) x%>%as.data.frame()%>%dplyr::filter(pathway%in%Common_pathways)%>%.[c("pathway","NES")]%>%matrix.please()%>%as.data.frame())%>%do.call("cbind",.)%>%setNames(names(Fgsea_output))
+
+Sig_pathways_pval=lapply(Fgsea_output, FUN= function(x) x%>%dplyr::filter(pval<0.05)%>%.$pathway ) %>%unlist()%>%as.character()%>%unique()
+Common_pathways_pval=Reduce(intersect,lapply(Fgsea_output, function(x) x%>%dplyr::filter(pathway%in%Sig_pathways_pval)%>%.$pathway )   )
+Sig_NES_pval=lapply(Fgsea_output, FUN= function(x) x%>%as.data.frame()%>%dplyr::filter(pathway%in%Common_pathways_pval)%>%.[c("pathway","NES")]%>%matrix.please()%>%as.data.frame())%>%do.call("cbind",.)%>%setNames(names(Fgsea_output))
+
+```
+
+```{r}
+Sig_pathways_filtered <- lapply(Fgsea_output, function(x) {
+  x %>% 
+    filter(pathway %in% Sig_pathways_padj & padj < 0.05) %>% 
+    pull(pathway)
+})
+
+Common_pathways_filtered <- Reduce(intersect, Sig_pathways_filtered)
+
+Sig_NES_padj_filtered <- lapply(Fgsea_output, function(x) { x %>% 
+    dplyr::filter(pathway %in% Common_pathways_filtered) %>% 
+    dplyr::select(pathway, NES)%>%as.data.frame() %>% matrix.please() %>% as.data.frame()
+}) %>% do.call("cbind", .) %>% setNames(names(Fgsea_output))
+
+
+
+
+```
+
+
+\newpage
+
+
+## Inhibition of OXFO AND TCA and activation of cell cyle are the common pathways in four subtypes (what are the driver genes for them)
+
+
+```{r,fig.width=20,fig.height=10,include=T}
+# Pathway_list_select=names(GSEA_pathway_list)%>%.[grepl("WP_GLYCOLYSIS|AEROBIC_GLYCOLYSIS|HALLMARK_MYC_TARGETS_V1|WP_OXIDATIVE_PHOSPHORYLATION|WP_FATTY_ACID_BETAOXIDATION|KEGG_REGULATION_OF_ACTIN_CYTOSKELETON|WP_CLEAR|HALLMARK_MTORC1",.)]%>%.[!grepl("GLUCONEOGENESIS",.)]
+Pathways=rownames(Sig_NES_padj_filtered )%>%.[grepl("WP_|HALLMARK|REACTOME|KEGG",.)]%>%.[grepl("OXIDATIVE|PPAR|OXPHOS|CYCLE",.)]
+FGSEA_p005_list=FGSEA_list%>%as.data.frame()%>%dplyr::filter(pathway %in%Pathways)%>%arrange(NES)
+FGSEA_p005_list$pathway=factor(FGSEA_p005_list$pathway,unique(FGSEA_p005_list$pathway))
+Output=Enrich_dotplot(FGSEA_p005_list)
+Output
+```
+
+```{r,fig.width=20,fig.height=10,include=T}
+# Pathway_list_select=names(GSEA_pathway_list)%>%.[grepl("WP_GLYCOLYSIS|AEROBIC_GLYCOLYSIS|HALLMARK_MYC_TARGETS_V1|WP_OXIDATIVE_PHOSPHORYLATION|WP_FATTY_ACID_BETAOXIDATION|KEGG_REGULATION_OF_ACTIN_CYTOSKELETON|WP_CLEAR|HALLMARK_MTORC1",.)]%>%.[!grepl("GLUCONEOGENESIS",.)]
+Pathways=rownames(Sig_NES_padj_filtered )%>%.[grepl("WP_|HALLMARK|REACTOME|KEGG",.)]%>%.[grepl("OXIDATIVE|PPAR|OXPHOS|CYCLE",.)]%>%.[grepl("WP|REACTOME",.)]
+FGSEA_p005_list=FGSEA_list%>%as.data.frame()%>%dplyr::filter(pathway %in%Pathways)%>%arrange(NES)
+FGSEA_p005_list$pathway=factor(FGSEA_p005_list$pathway,unique(FGSEA_p005_list$pathway))
+Output=Enrich_dotplot(FGSEA_p005_list)
+Output
+```
+
+```{r,eval=F}
+Pathway_list_gene_name=function(Pathway_list,pathway_name_list,Combined_path_name){
+  name_list=list()
+  for (i in 1:length(pathway_name_list)){
+    pathway_name=pathway_name_list[i]
+    pathway_genes=Pathway_list[[pathway_name]]%>%as.character()
+    name_list[[i]]=pathway_genes
+  }
+  pathway_genes=unlist(name_list) %>%as.character() %>%unique()
+  # return(pathway_genes)
+}
+
+Cell_cycle_genelist=Pathway_list_gene_name(GSEA_pathway_list,Pathways,"All_genes_in_pathways")
+
+Cell_cycle_genelist%>%.[grepl("GIT2",.)]
+```
+
+```{r,eval=T}
+Ttest_sig_UP <- Ttest_list %>% 
+  lapply(., function(x) x %>% 
+           dplyr::filter(pvalue < 0.05 & log2Foldchange > 0.27) %>% 
+           pull(gene_symbol))
+
+common_genes_UP <- Reduce(intersect, Ttest_sig_UP) 
+
+```
+
+
+# Top5 genes with greatest pvalue for negative correlation with TCA,  OXFO.  GIT2 is the one of common genes in cell cycle that was correlated with these pathways (p value <0.05) in two cohorts. 
+
+```{r}
+## Common upregulated genes
+load (file.path(Rawdata_path,"CHKIRC","Proteomics","54_Singscore.rdata"  ))
+select_path_singscore=KIRC_singscore_data%>%t()%>%.[,Pathways]
+Common_genes_data=Pro_log_data[common_genes_UP,]%>%t()
+
+Gene_singscore_combination= cbind(Common_genes_data,select_path_singscore)  
+
+Cor_data_list=list()
+
+for (i in colnames(Common_genes_data)){
+  gene_exp=Gene_singscore_combination[,i]
+  gene_cor_list=list()
+  for(h in colnames(select_path_singscore)){
+    Singscore_data=Gene_singscore_combination[,h]
+    CORR=cor.test(gene_exp,Singscore_data)
+    gene_cor_list[[h]]=data.frame(pvalue= CORR$p.value,Corr=CORR$estimate)
+  }
+  Cor_data_list[[i]]=do.call("rbind",gene_cor_list)%>%as.data.frame() 
+}
+
+Cor_data=Cor_data_list%>%do.call("cbind",.) %>%as.data.frame()
+
+Cor_data%>%.[grepl("GIT2",colnames(.))]
+
+
+Cor_data_corr_sort=Cor_data%>%.[,grepl("Corr",colnames(.))]%>%t()%>%as.data.frame()%>%dplyr::filter(WP_OXIDATIVE_PHOSPHORYLATION<as.numeric(-0.4))%>%arrange(WP_PPAR_SIGNALING_PATHWAY)%>%na.omit()%>%dplyr::filter()
+#%>%mutate(MEAN_coff=apply(.,1,mean))%>%arrange(MEAN_coff)
+#%>%mutate(MEAN_coff=apply(.,1,function(x) out=mean(abs(x))))%>%arrange(desc(MEAN_coff)) 
+rownames(Cor_data_corr_sort)=gsub(".Corr","",rownames(Cor_data_corr_sort))
+
+library(tidyverse)
+Cor_data_corr=Cor_data_corr_sort[1:5,]%>% rownames_to_column()%>%pivot_longer(-1)%>%as.data.frame()%>%mutate(rowname=gsub(".Corr","",rowname))
+Cor_data_corr$rowname=factor(Cor_data_corr$rowname,levels=rownames(Cor_data_corr_sort))
+Cor_data_corr$name=factor(Cor_data_corr$name,levels=rownames(Cor_data))
+library(tidyverse)
+Cor_data_corr=Cor_data_corr_sort[1:5,]%>% rownames_to_column()%>%pivot_longer(-1)%>%as.data.frame()%>%mutate(rowname=gsub(".Corr","",rowname))
+Cor_data_corr$rowname=factor(Cor_data_corr$rowname,levels=rownames(Cor_data_corr_sort))
+Cor_data_corr$name=factor(Cor_data_corr$name,levels=rownames(Cor_data))
+
+
+pvalue_data_corr_sort=Cor_data%>%.[,grepl("pvalue",colnames(.))]%>%.[colnames(Cor_data_corr_sort), ]%>%t()%>%as.data.frame()
+rownames(pvalue_data_corr_sort)=gsub(".pvalue","",rownames(pvalue_data_corr_sort))
+ 
+#%>%mutate(MEAN_coff=apply(.,1,mean))%>%arrange(MEAN_coff)
+#%>%mutate(MEAN_coff=apply(.,1,function(x) out=mean(abs(x))))%>%arrange(desc(MEAN_coff)) 
+
+pvalue_long <- pvalue_data_corr_sort[as.character(unique(Cor_data_corr$rowname)),] %>%
+  rownames_to_column(var = "rowname") %>%
+  pivot_longer(-rowname, names_to = "name", values_to = "pvalue") %>%
+  mutate(Norm_logp = -log2(pvalue))%>%mutate(Sig_p=ifelse(pvalue<0.05,"p<0.05","p>0.05"))
+
+```
+
+
+```{r,fig.width=12,fig.height=10,include=T}
+Cor_data_corr2 <- Cor_data_corr %>%
+  left_join(pvalue_long, by = c("rowname", "name"))
+
+ggplot(Cor_data_corr2, aes(x = name, y = value, color = Sig_p,size=Norm_logp)) +
+  geom_point() +
+  scale_y_reverse() +
+  ylab("Corr") +
+  scale_color_manual(values=c("red","grey"))+
+  labs(size = "-log2pvalue") +  # Customize color gradient
+  theme(axis.text.x = element_text(angle = 90)) +
+  facet_grid(~ rowname)
+```
+
+\newpage
+```{r,fig.width=12,fig.height=10,include=T}
+Cor_data_corr3 <- Cor_data_corr2 %>%
+  dplyr::mutate(Color = case_when(
+    value > 0 & Sig_p == "p<0.05" ~ "red",    # Positive correlation, significant
+    value < 0 & Sig_p == "p<0.05" ~ "green",   # Negative correlation, significant
+    TRUE ~ "grey"                            # Non-significant or other cases
+  ))
+
+ggplot(Cor_data_corr3, aes(x = name, y = value, color = Color, size = Norm_logp)) +
+  geom_point() +
+  scale_y_reverse() +
+  ylab("Corr") +
+   scale_color_identity() + # Use the custom color palette
+  labs(size = "-log2pvalue") +  # Customize size label
+  theme(axis.text.x = element_text(angle = 90)) +
+  facet_grid(~ rowname)
+```
+
+```{r}
+knitr::knit_exit()
+```
+
+
+## sig pathways based on pvalue
+
+
+```{r,fig.width=22,fig.height=10,include=T}
+
+Sig_pathways_pval_filtered <- lapply(Fgsea_output, function(x) {
+  x %>% 
+    filter(pathway %in% Sig_pathways_pval & pval < 0.05) %>% 
+    pull(pathway)
+})
+
+Common_pathways_pval_filtered <- Reduce(intersect, Sig_pathways_pval_filtered)
+Sig_NES_pval_filtered <- lapply(Fgsea_output, function(x) { x %>% 
+    dplyr::filter(pathway %in% Common_pathways_pval_filtered) %>% 
+    dplyr::select(pathway, NES)%>%as.data.frame() %>% matrix.please() %>% as.data.frame()
+}) %>% do.call("cbind", .) %>% setNames(names(Fgsea_output))
+
+Pathways=rownames(Sig_NES_pval_filtered )%>%.[grepl("GLYCOLYSIS|FATTY|TCA|OXPHOS|OXIDATIVE|CELL_CYCLE|NRF2|PPAR|CITRIC",.)]%>%.[grepl("KEGG|WP_|HALLMARK|REACTOME",.)]
+FGSEA_p005_list=FGSEA_list%>%as.data.frame()%>%dplyr::filter(pathway %in%Pathways)%>%arrange(NES)
+FGSEA_p005_list$pathway=factor(FGSEA_p005_list$pathway,unique(FGSEA_p005_list$pathway))
+
+Output=Enrich_dotplot_pval(FGSEA_p005_list)
+Output
+
+```
+
+```{r}
+knitr::knit_exit()
+```
+
+
+# Top10 cell cycle-assoicated genes with greatest pvalue for correlation with TCA, Fatty acid  OXFO.  GIT2 is the one of common genes in cell cycle that was correlated with these pathways (p value <0.05) in two cohorts. 
+
+```{r}
+## Common upregulated genes
+
+select_path_singscore=KIRC_singscore_data%>%t()%>%.[,Pathways]
+Common_genes_data=Pro_log_data[common_genes_UP,]%>%t()
+
+Gene_singscore_combination= cbind(Common_genes_data,select_path_singscore)
+
+Cor_data_list=list()
+
+for (i in colnames(Common_genes_data)){
+  gene_exp=Gene_singscore_combination[,i]
+  gene_cor_list=list()
+  for(h in colnames(select_path_singscore)){
+    Singscore_data=Gene_singscore_combination[,h]
+    CORR=cor.test(gene_exp,Singscore_data)
+    gene_cor_list[[h]]=data.frame(pvalue= CORR$p.value,Corr=CORR$estimate)
+  }
+  Cor_data_list[[i]]=do.call("rbind",gene_cor_list)%>%as.data.frame() 
+}
+
+Cor_data=Cor_data_list%>%do.call("cbind",.) %>%as.data.frame()
+
+Cor_data%>%.[grepl("GIT2",colnames(.))]%>%arrange(GIT2.Corr)
+
+
+Cor_data_corr_sort=Cor_data%>%.[,grepl("Corr",colnames(.))]%>%t()%>%as.data.frame()%>%dplyr::filter(REACTOME_CELL_CYCLE>0.4&WP_OXIDATIVE_PHOSPHORYLATION<as.numeric(-0.4))%>%arrange(KEGG_PPAR_SIGNALING_PATHWAY,WP_NRF2_PATHWAY)
+```
+
+
+```{r}
+KIRC_Cor_data_corr=Cor_data_corr%>%na.omit()
+KIRC_cor_pvalue=Cor_data%>%.[,grepl("pvalue",colnames(.))]%>%t()%>%as.data.frame()
+rownames(KIRC_cor_pvalue)=gsub(".pvalue","",rownames(KIRC_cor_pvalue))
+KIRC_cor_pvalue_2=KIRC_cor_pvalue%>% rownames_to_column()%>%.[match(rownames(Cor_data_corr_sort),.$rowname), ]%>%
+  pivot_longer(-1)%>%as.data.frame()%>% 
+  mutate(sig_text = case_when(
+                      value >= 0.05 ~ "ns",
+                      0.05 > value & value > 0.01 ~ "*",
+                      0.01 >= value & value > 0.001 ~ "**",
+                      value <=0.001 ~ "***",
+                      .default = "error")) -> hp_filtered
+KIRC_cor_pvalue_2$rowname=factor(KIRC_cor_pvalue_2$rowname,levels=unique(KIRC_cor_pvalue_2$rowname))
+KIRC_cor_pvalue_2$name=factor(KIRC_cor_pvalue_2$name,levels=unique(KIRC_cor_pvalue_2$name))
+
+```
+
+ 
+```{r}
+Pathway_list=c("WHITFIELD_CELL_CYCLE_G2_M", "FISCHER_G1_S_CELL_CYCLE","FISCHER_G2_M_CELL_CYCLE","REACTOME_CELL_CYCLE_MITOTIC")
+
+new_name="G1_S_M_CELL_CYCLE"
+Genelist=rownames(Cor_data_corr_sort)
+
+Plot_list=list()
+for (i in 1:length(Ttest_list)){
+ Plot_list[[i]]= Valcano_plot_genelist (Ttest_list[[i]],GSEA_pathway_list,Pathway_list,new_name,Genelist)+ggtitle(names(Ttest_list)[i])
+
+  
+}
+
+```
+
+
+```{r,fig.width=14,fig.height=12,include=T}
+cowplot::plot_grid(plotlist = Plot_list,nrow=2)+ggtitle(new_name)
+```
+
+
+
+
+
+
+
+```{r}
+knitr::knit_exit()
+```
+
+
+
+
+```{r,include=F}
+rm(list=ls())
+Rcode_path=getwd()
+Path=gsub("/Rcode","",Rcode_path)
+Rdata_path=file.path(Path,"Rdata")
+Rawdata_path=file.path(Path,"Raw_data")
+
+NC_Rawdata_path=file.path(Path,"Raw_data","NC_230")
+
+Reference_path="/media/yang/5C34D30CFFA47C28/R/Reference"
+dir(Reference_path)
+library(dplyr)
+
+library(ggplot2)
+#install.packages("ggtext")
+#install.packages("survminer")
+
+#source( file.path(R_function_path, "RNAseq_pipeline.R"))
+
+```
+
+```{r}
+
+matrix.please<-function(x) {
+  m<-as.matrix(x[,-1])
+  rownames(m)<-x[,1]
+  m
+}
+
+pheatmap_pathway_NES<- function (expression_data,pathway_name) {
+   Color = colorRampPalette(c("blue", "white", "red"))(50)
+#  paletteLength <- 50
+   # NES_breaks <- c(seq(min(test), 0, length.out=ceiling(paletteLength/2) + 1), 
+   #            seq(max(test)/paletteLength, max(test), length.out=floor(paletteLength/2)))
+   #NES_breaks <- c(seq(-3, 0, length.out=ceiling(paletteLength/2) + 1),
+              # seq(3/paletteLength, 3, length.out=floor(paletteLength/2)))
+   NES_breaks = seq(-3, 3, length.out =50)
+  
+   pheatmap::pheatmap(expression_data, cellwidth=20, cellheight = 10, scale = "none",color = Color,
+                                    treeheight_row = 5,main=pathway_name,
+                                    show_rownames = T,show_colnames = T,
+                                    #annotation_col= Annotation,
+                                    # annotation_row=Annotation,
+                                    #annotation_legend=Label_def,
+                                    cluster_rows = T,  cluster_cols = F,clustering_distance_rows = "euclidean",breaks=NES_breaks)
+  
+  }
+Valcano_plot_new_2=function(Data,Pathway_list,pathway_name){
+  pathway_genes=Pathway_list [[pathway_name]]%>%as.character()
+ 
+  library(ggrepel)
+  Data=Data%>%.[.$gene_symbol%in%pathway_genes,]
+  # add a column of NAs
+  de=Data %>%mutate(diffexpressed=ifelse(pvalue>0.05,"NO",ifelse(log2Foldchange>0,"UP","DOWN")))
+  de$delabel <- NA
+  de$delabel[de$diffexpressed != "NO"] <- de$gene_symbol[de$diffexpressed != "NO"]
+  
+  # plot adding up all layers we have seen so far
+  ggplot(data=de, aes(x=log2Foldchange, y=-log10(pvalue), col=diffexpressed, label=delabel)) +
+    geom_point() + ggtitle(pathway_name)+
+    theme_minimal() +
+    geom_text_repel(max.overlaps = Inf ) +
+    scale_color_manual(values=c("DOWN"="blue", "NO"= "black","UP"= "red")) +
+    geom_vline(xintercept=c(-0.6, 0.6), col="red") +
+    geom_hline(yintercept=-log10(0.05), col="red")
+  
+  
+  
+  
+}
+
+
+
+
+Pathway_list_gene_name=function(Pathway_list,pathway_name_list,Combined_path_name){
+  name_list=list()
+  for (i in 1:length(pathway_name_list)){
+    pathway_name=pathway_name_list[i]
+    pathway_genes=Pathway_list[[pathway_name]]%>%as.character()
+    name_list[[i]]=pathway_genes
+  }
+  pathway_genes=unlist(name_list) %>%as.character() %>%unique()
+  # return(pathway_genes)
+}
+
+
+
+Valcano_plot_pathway_list=function(Data,Pathway_list,pathway_name_list,Combined_path_name){
+  name_list=list()
+  for (i in 1:length(pathway_name_list)){
+    pathway_name=pathway_name_list[i]
+    pathway_genes=Pathway_list[[pathway_name]]%>%as.character()
+    name_list[[i]]=pathway_genes
+  }
+  pathway_genes=unlist(name_list) %>%as.character() %>%unique()
+  # return(pathway_genes)
+  library(ggrepel)
+  Data=Data%>%.[.$gene_symbol%in%pathway_genes,]
+  # add a column of NAs
+  de=Data %>%mutate(diffexpressed=ifelse(pvalue>0.05,"NO",ifelse(log2Foldchange>0,"UP","DOWN")))
+  de$delabel <- NA
+  de$delabel[de$diffexpressed != "NO"] <- de$gene_symbol[de$diffexpressed != "NO"]
+  
+  # plot adding up all layers we have seen so far
+  ggplot(data=de, aes(x=log2Foldchange, y=-log10(pvalue), col=diffexpressed, label=delabel)) +
+    geom_point() + 
+    theme_minimal() +
+    geom_text_repel(box.padding = 0.15,max.overlaps=20) +
+    scale_color_manual(values=c("blue", "black", "red")) +
+    geom_vline(xintercept=c(-0.6, 0.6), col="red") +
+    geom_hline(yintercept=-log10(0.05), col="red")
+  
+  
+  
+  
+}
+
+
+Valcano_plot_genelist=function(Data,Pathway_list,pathway_name_list,Combined_path_name,Genelist){
+  
+   name_list=list()
+  for (i in 1:length(pathway_name_list)){
+    pathway_name=pathway_name_list[i]
+    pathway_genes=Pathway_list[[pathway_name]]%>%as.character()
+    name_list[[i]]=pathway_genes
+  }
+   
+  pathway_genes=unlist(name_list) %>%as.character() %>%unique()
+  # return(pathway_genes)
+  library(ggrepel)
+  Data=Data%>%.[.$gene_symbol%in%pathway_genes,]
+  # add a column of NAs
+  de=Data %>%mutate(diffexpressed=ifelse(pvalue>0.05,"NO",ifelse(log2Foldchange>0,"UP","DOWN")))
+  de$delabel <- NA
+  de$delabel[de$diffexpressed != "NO"] <- de$gene_symbol[de$diffexpressed != "NO"]
+
+  name_list=list()
+   for (i in 1:length(pathway_name_list)){
+    pathway_name=pathway_name_list[i]
+    pathway_genes=Pathway_list[[pathway_name]]%>%as.character()
+    name_list[[i]]=pathway_genes
+  }
+  pathway_genes=unlist(name_list) %>%as.character() %>%unique()
+  # return(pathway_genes)
+  library(ggrepel)
+  Data=Data%>%.[.$gene_symbol%in%pathway_genes,]
+   
+  # add a column of NAs
+  de=Data %>%mutate(diffexpressed=ifelse(pvalue>0.05,"NO",ifelse(log2Foldchange>0,"UP","DOWN")))
+  de$delabel <- NA
+  de$delabel[de$diffexpressed != "NO"] <- de$gene_symbol[de$diffexpressed != "NO"]
+  
+  # plot adding up all layers we have seen so far
+  ggplot(data=de, aes(x=log2Foldchange, y=-log10(pvalue), col=diffexpressed, label=delabel)) +
+    geom_point() + 
+    theme_minimal() +
+    geom_text_repel(data=de%>%.[.$gene_symbol%in%Genelist,],force_pull=0 ,box.padding = 0.15,max.overlaps=Inf,segment.color="grey50") +
+    scale_color_manual(values=c("blue", "black", "red")) +
+    geom_vline(xintercept=c(-0.6, 0.6), col="red") +
+    geom_hline(yintercept=-log10(0.05), col="red")
+  
+  
+  
+  
+  
+  
+}
+
+# GSEA GO_KEGGP_WP_C2CGP_Reactome_pathway
+ 
+load(file.path(Reference_path,"Human_GSEA","GO_KEGGP_WP_C2CGP_Reactome_pathway_list.rdata"))
+```
+
+# Use Tumor/normal ratio to get differential expressed genes and then perform GSEA analysis based on it. Both type1 and type2 showed inhibited TCA, fatty acid metabolism in tumor compared to normal.
+
+# CHKIRC data (54 samples)
+
+
+```{r}
+load(file.path(Rawdata_path,"Two_cohorts_normalized_singscore.data"))
+```
+
+
+```{r}
+Pro_log_data=read.table(file.path(Rawdata_path,"CHKIRC","Proteomics","54_Proteomics_T&N_ratio.txt"),fill=T)
+clinical_54_data_2=read.table(file.path(Rawdata_path, "CHKIRC","Clinic","54_Clinical_data.txt"),header = T,check.names = F)
+Invasion_anno=clinical_54_data_2%>%dplyr::filter(Capsular_invasion=="Y" )
+sig_pathways_umap=read.csv(file.path(Rawdata_path,"CHKIRC","Proteomics","54_subtypes_UMAP_sig_pathways.csv"))
+sig_pathways_umap$Subtype=factor(sig_pathways_umap$Subtype,levels=c("CHKIRC_Primary_type1","CHKIRC_Primary_type2" ,"CHKIRC_Invasion_type1","CHKIRC_Invasion_type2" ))
+
+KIRC_norm_singscore=Two_cohorts_singscore_norm%>% .[!grepl("C3",rownames(.)),] #C3 is for CPTAC data
+sig_pathways_umap_2=sig_pathways_umap%>%mutate(Subtype2=ifelse(grepl("type1",Subtype),"KIRC_type1","KIRC_type2" ))
+Type1_anno=sig_pathways_umap_2%>%dplyr::filter(grepl("type1",Subtype))
+Type2_anno=sig_pathways_umap_2%>%dplyr::filter(grepl("type2",Subtype))
+```
+
+
+```{r,eval=F}
+Ttest_list=list()
+Subtype=unique(sig_pathways_umap_2$Subtype2)%>%sort()
+for (  i in Subtype){
+  samples=sig_pathways_umap_2%>%dplyr::filter(Subtype2==i)%>%.$Sample_ID
+  Data=Pro_log_data%>%.[,samples]
+  Ttest=t(Data)%>%as.data.frame() %>%apply(2,function (x) (t.test(x))$p.value )%>%unlist()%>%as.data.frame()%>%setNames("pvalue") %>%mutate(padj=p.adjust(pvalue))
+ Mean_log=t(Data)%>%as.data.frame()%>%apply(2,function (x) mean(x))
+ Ttest_padj005=Ttest %>% mutate(log2Foldchange=Mean_log) %>%dplyr::filter(padj<0.05)
+  Ttest_list[[i]]=Ttest %>% mutate(log2Foldchange=Mean_log)%>%mutate(gene_symbol=rownames(.))
+
+}
+```
+
+
+```{r,eval=F}
+Ttest_sig_UP <- Ttest_list %>% 
+  lapply(., function(x) x %>% 
+           dplyr::filter(pvalue < 0.05 & log2Foldchange > 0.27) %>% 
+           pull(gene_symbol))
+
+common_genes_UP <- Reduce(intersect, Ttest_sig_UP) 
+
+```
+
+
+```{r,eval=T}
+Ttest_list=list()
+Subtype=unique(sig_pathways_umap_2$Subtype)%>%sort()
+for (  i in Subtype){
+  samples=sig_pathways_umap_2%>%dplyr::filter(Subtype==i)%>%.$Sample_ID
+  Data=Pro_log_data%>%.[,samples]
+  Ttest=t(Data)%>%as.data.frame() %>%apply(2,function (x) (t.test(x))$p.value )%>%unlist()%>%as.data.frame()%>%setNames("pvalue") %>%mutate(padj=p.adjust(pvalue))
+ Mean_log=t(Data)%>%as.data.frame()%>%apply(2,function (x) mean(x))
+ Ttest_padj005=Ttest %>% mutate(log2Foldchange=Mean_log) %>%dplyr::filter(padj<0.05)
+  Ttest_list[[i]]=Ttest %>% mutate(log2Foldchange=Mean_log)%>%mutate(gene_symbol=rownames(.))
+
+}
+```
+
+```{r}
+## GSEA (C2 and hallmark)
+
+GMT_files=list.files(file.path(Reference_path,"Human_GSEA","2023_2"),full.names = T)%>%.[grepl("gmt.txt",.)]%>%.[grepl("c2|h.",.)]
+
+Fgsea_output=list()
+for ( i in names(Ttest_list) ){
+  res_p005=Ttest_list[[i]]%>%dplyr::filter(pvalue<0.05)
+  res_p005_rank=res_p005%>%arrange(log2Foldchange) %>%.[c("log2Foldchange")]%>%as.data.frame()%>%tibble::rownames_to_column()%>%na.omit()
+  
+  ranks <- tibble::deframe(res_p005_rank)
+
+ fgsea_list=list()
+ for (k in GMT_files){
+    name=gsub(".*/","",k)
+    name2=gsub(".symbols.gmt.txt","",name)
+   # set.seed(123456)
+    pathway= fgsea::gmtPathways(k)
+    fgseaRes <- fgsea::fgseaMultilevel(pathway, ranks,
+                           minSize=5,
+                           maxSize=500,nPermSimple = 10000,eps = 0)
+                          
+    fgsea_list[[name2]]=fgseaRes
+
+}
+
+Fgsea_output[[i]]=do.call("rbind",fgsea_list)
+  
+}
+
+names(Fgsea_output)
+
+
+# generate data set by using common pathways in four NES data from subtypes  
+colnames(Fgsea_output[[1]])
+all_Common_pathways=Reduce(intersect,lapply(Fgsea_output, function(x) x$pathway )   )
+
+all_pathways=lapply(Fgsea_output, function(x) x$pathway )%>%unlist()%>%as.character() %>%as.data.frame()%>%setNames("pathway")%>%unique
+All_NES_pvalue=lapply(Fgsea_output, FUN= function(x) x%>%as.data.frame()%>%dplyr::filter(pathway%in%all_Common_pathways)%>%.[c("pathway","NES","padj")]%>%matrix.please()%>%as.data.frame())%>%do.call("cbind",.)
+
+All_NES_pvalue2=lapply(Fgsea_output, FUN= function(x) x%>%as.data.frame()%>%dplyr::filter(pathway%in%all_Common_pathways)%>%.[c("pathway","NES","padj","pval")]%>%matrix.please()%>%as.data.frame())%>%do.call("cbind",.)
+
+#%>%setNames(names(Fgsea_output)) 
+
+All_NES=lapply(Fgsea_output, FUN= function(x) x%>%as.data.frame()%>%dplyr::filter(pathway%in%all_Common_pathways)%>%.[c("pathway","NES")]%>%matrix.please()%>%as.data.frame())%>%do.call("cbind",.)%>%setNames(names(Fgsea_output)) 
+Fgsea_output$CHKIRC_Primary_type1
+ALL_NES_imput=lapply(Fgsea_output, FUN= function(x) all_pathways%>%left_join(.,x[,c("pathway","NES","padj")])%>%mutate(NES=ifelse(is.na(NES),0,NES))%>%mutate(padj=ifelse(is.na(padj),1,padj))%>%matrix.please())%>%do.call("cbind",.)%>%as.data.frame()
+
+
+colnames(ALL_NES_imput)=sapply(names(Fgsea_output),function(x) paste0(x,c("_NES","_padj")) )%>%as.character()
+ 
+rownames(ALL_NES_imput)%>%.[grepl("\\.",.)]
+
+Sig_pathways=lapply(Fgsea_output, FUN= function(x) x%>%dplyr::filter(padj<0.05)%>%.$pathway ) %>%unlist()%>%as.character()%>%unique()
+Common_pathways=Reduce(intersect,lapply(Fgsea_output, function(x) x%>%dplyr::filter(pathway%in%Sig_pathways)%>%.$pathway )   )
+Sig_NES=lapply(Fgsea_output, FUN= function(x) x%>%as.data.frame()%>%dplyr::filter(pathway%in%Common_pathways)%>%.[c("pathway","NES")]%>%matrix.please()%>%as.data.frame())%>%do.call("cbind",.)%>%setNames(names(Fgsea_output))
+```
+
+
+```{r}
+# Glycolysis, TCA cycle, Fatty acid, OXFO pathways
+
+set.seed(12345)
+# Choose  four gene sets and do kmeans analysis
+select_path=rownames(Sig_NES)%>% .[grepl("TCA|FATTY_ACID|OXIDATIVE_PHOS|CIRTAT_ACID|PYRUVATE|AEROBIC_GLYCOLYSIS",.)]%>%as.character()%>% .[grepl("WP_|KEGG|HALLMARK|REAC",.)]
+#%>%.[!grepl("GLUCONEOGENESIS",.)]
+Data_select=Sig_NES%>%.[select_path,]
+
+# Data_select_kmeans=kmeans(Data_select,centers = 5,algorithm ="MacQueen")
+# Data_select_kmeans[[2]]
+# 
+# P1=pheatmap_pathway_NES(Data_select,"Metabolism" )
+All_NES_select=All_NES_pvalue[select_path,]%>%.[,grepl("padj",colnames(.))]%>%mutate(MAX_padj=apply(.,1,max))%>%dplyr::filter(MAX_padj<0.06)
+
+All_NES_select_all_p005=All_NES%>%.[rownames(All_NES_select),]
+
+All_NES_select2=All_NES_pvalue2[select_path,]%>%.[,grepl("pval",colnames(.))]%>%mutate(MAX_pval=apply(.,1,max))%>%dplyr::filter(MAX_pval<0.05)
+
+All_NES_select2_all_p005=All_NES%>%.[rownames(All_NES_select2),]
+
+common_pathway_names= intersect( paste0(select_path,"_Normalized_singscore"), colnames(KIRC_norm_singscore) )
+
+select_path_singscore=KIRC_norm_singscore%>%.[,common_pathway_names]
+```
+
+
+ 
+
+
+
+```{r}
+Pathway_list=c("WHITFIELD_CELL_CYCLE_G2_M", "FISCHER_G1_S_CELL_CYCLE","FISCHER_G2_M_CELL_CYCLE","REACTOME_CELL_CYCLE_MITOTIC")
+
+new_name="G1_S_M_CELL_CYCLE"
+
+Plot_list=list()
+for (i in 1:length(Ttest_list)){
+ Plot_list[[i]]= Valcano_plot_pathway_list(Ttest_list[[i]],GSEA_pathway_list,Pathway_list,new_name)+ggtitle(names(Ttest_list)[i])
+
+  
+}
+
+```
+
+
+```{r,include=T}
+knitr::kable(All_NES_select_all_p005,caption="select pathways") %>%kableExtra::kable_styling(latex_options = c("hold_position","scale_down"))
+```
+
+## Supplementary figure
+```{r,fig.width=14,fig.height=12,include=T}
+cowplot::plot_grid(plotlist = Plot_list,nrow=2)+ggtitle(new_name)
+```
+
+# Top10 cell cycle-assoicated genes with greatest pvalue for correlation with TCA, Fatty acid  OXFO.  GIT2 is the one of common genes in cell cycle that was correlated with these pathways (p value <0.05) in two cohorts. 
+```{r}
+Cell_cycle_genelist=Pathway_list_gene_name(GSEA_pathway_list,Pathway_list,new_name)
+Type1_top=Ttest_list[[1]]%>%dplyr::filter(gene_symbol%in%Cell_cycle_genelist) %>%arrange(padj)%>%dplyr::filter(log2Foldchange>0.6)%>%.[1:20,]
+Type2_top=Ttest_list[[2]]%>%dplyr::filter(gene_symbol%in%Cell_cycle_genelist) %>%arrange(padj)%>%dplyr::filter(log2Foldchange>0.6)%>%.[1:20,]
+
+Common_genes=intersect(Type1_top$gene_symbol,Type2_top$gene_symbol)
+
+
+Common_genes_data=Pro_log_data[Common_genes,]%>%t()
+
+Gene_singscore_combination= cbind(Common_genes_data,select_path_singscore)
+
+Cor_data_list=list()
+
+for (i in colnames(Common_genes_data)){
+  gene_exp=Gene_singscore_combination[,i]
+  gene_cor_list=list()
+  for(h in colnames(select_path_singscore)){
+    Singscore_data=Gene_singscore_combination[,h]
+    CORR=cor.test(gene_exp,Singscore_data)
+    gene_cor_list[[h]]=data.frame(pvalue= CORR$p.value,Corr=CORR$estimate)
+  }
+  Cor_data_list[[i]]=do.call("rbind",gene_cor_list)%>%as.data.frame() 
+}
+
+Cor_data=Cor_data_list%>%do.call("cbind",.) %>%as.data.frame()%>%arrange(PSMB9.pvalue)%>%na.omit()
+Cor_data%>%.[grepl("GIT2",colnames(.))]
+
+
+Cor_data_corr_sort=Cor_data%>%.[,grepl("Corr",colnames(.))]%>%t()%>%as.data.frame()%>%na.omit()%>%mutate(MEAN_coff=apply(.,1,function(x) out=mean(abs(x))))%>%arrange(desc(MEAN_coff)) %>%.[1:10,]%>%select(-MEAN_coff)%>%na.omit()
+rownames(Cor_data_corr_sort)=gsub(".Corr","",rownames(Cor_data_corr_sort))
+
+library(tidyverse)
+Cor_data_corr=Cor_data_corr_sort%>% rownames_to_column()%>%
+  pivot_longer(-1)%>%as.data.frame()%>%mutate(rowname=gsub(".Corr","",rowname))
+Cor_data_corr$rowname=factor(Cor_data_corr$rowname,levels=rownames(Cor_data_corr_sort))
+Cor_data_corr$name=factor(Cor_data_corr$name,levels=rownames(Cor_data))
+```
+
+
+```{r}
+KIRC_Cor_data_corr=Cor_data_corr%>%na.omit()
+KIRC_cor_pvalue=Cor_data%>%.[,grepl("pvalue",colnames(.))]%>%t()%>%as.data.frame()
+rownames(KIRC_cor_pvalue)=gsub(".pvalue","",rownames(KIRC_cor_pvalue))
+KIRC_cor_pvalue_2=KIRC_cor_pvalue%>% rownames_to_column()%>%.[match(rownames(Cor_data_corr_sort),.$rowname), ]%>%
+  pivot_longer(-1)%>%as.data.frame()%>% 
+  mutate(sig_text = case_when(
+                      value >= 0.05 ~ "ns",
+                      0.05 > value & value > 0.01 ~ "*",
+                      0.01 >= value & value > 0.001 ~ "**",
+                      value <=0.001 ~ "***",
+                      .default = "error")) -> hp_filtered
+KIRC_cor_pvalue_2$rowname=factor(KIRC_cor_pvalue_2$rowname,levels=unique(KIRC_cor_pvalue_2$rowname))
+KIRC_cor_pvalue_2$name=factor(KIRC_cor_pvalue_2$name,levels=unique(KIRC_cor_pvalue_2$name))
+
+```
+
+ 
+```{r}
+Pathway_list=c("WHITFIELD_CELL_CYCLE_G2_M", "FISCHER_G1_S_CELL_CYCLE","FISCHER_G2_M_CELL_CYCLE","REACTOME_CELL_CYCLE_MITOTIC")
+
+new_name="G1_S_M_CELL_CYCLE"
+Genelist=rownames(Cor_data_corr_sort)
+
+Plot_list=list()
+for (i in 1:length(Ttest_list)){
+ Plot_list[[i]]= Valcano_plot_genelist (Ttest_list[[i]],GSEA_pathway_list,Pathway_list,new_name,Genelist)+ggtitle(names(Ttest_list)[i])
+
+  
+}
+
+```
+
+
+```{r,fig.width=14,fig.height=12,include=T}
+cowplot::plot_grid(plotlist = Plot_list,nrow=2)+ggtitle(new_name)
+```
+
+
+```{r,fig.width=12,fig.height=16,include=T}
+ggplot(KIRC_Cor_data_corr,aes(x = name, y = rowname)) +geom_tile(aes( fill = value)) +
+  coord_equal() +
+  scale_fill_gradient2(low = "blue3", mid = "white", high = "red3") +geom_text(label=KIRC_cor_pvalue_2$sig_text, size=5) +
+  labs(x = NULL, y = NULL)+theme(axis.text.x =element_text(angle=90) )
+```
+
+```{r}
+knitr::knit_exit()
+```
+
+
+# CPTAC
+```{r}
+CPTAC_norm_singscore=Two_cohorts_singscore_norm%>% .[grepl("C3",rownames(.)),]
+CPTAC_proteomics_path=file.path(Path,"Raw_data/CPTAC/Proteomics")
+CPTAC_proteomics_ratio=read.table(file.path(CPTAC_proteomics_path,"CPTAC3_CCRCC.tumor2normal.txt"),fill=T,header = T,check.names = F) %>% .[4:9967,]%>%matrix.please()%>%as.data.frame()
+
+CPTAC_clinical_path=file.path(Path,"Raw_data/CPTAC/Clinical")
+CPTAC_clinic=readxl::read_excel(file.path(CPTAC_clinical_path,"S050_S044_CPTAC_ccRCC_Discovery_Cohort_Clinical_Data_r4_Sept2019.xlsx"),
+                                sheet=2)
+
+colnames(CPTAC_clinic)=gsub("/","_",colnames(CPTAC_clinic))
+
+CPTAC_clinic_paried=CPTAC_clinic %>% dplyr::filter(tumor_normal=="TN")%>%mutate (stage=ifelse(grepl( "pT1",pathologic_staging_primary_tumor_pT),"T1","T2-T4"))  %>% mutate(stage2=gsub("a|b","",pathologic_staging_primary_tumor_pT)) %>%
+  dplyr::rename(Sample_ID="case_id",diameter="tumor_size_in_cm")%>% .[,c("Sample_ID","age","stage","stage2","diameter")]  %>%mutate(Capsular_invasion="Unknown")
+setdiff(CPTAC_clinic_paried$Sample_ID,colnames(CPTAC_proteomics_ratio))
+
+CPTAC_proteomics_ratio_log=log2(CPTAC_proteomics_ratio)
+
+CPTAC_sig_UMAP=read.csv(file.path(Rawdata_path,"CPTAC","Proteomics","79_CPTAC_subtypes_UMAP_sig_pathways.csv"))
+Pro_log_data_from_pathway=CPTAC_proteomics_ratio_log 
+
+Pro_log_data_from_pathway2=Pro_log_data_from_pathway%>%na.omit()%>%t()%>%as.data.frame()%>%mutate(Sample_ID=rownames(.))%>%left_join(.,CPTAC_sig_UMAP[,c("Sample_ID","Subtype2")])%>%arrange(Subtype2)%>%na.omit()
+rownames(Pro_log_data_from_pathway2)=Pro_log_data_from_pathway2$Sample_ID
+
+
+sig_pathways_umap_2=CPTAC_sig_UMAP
+Pro_log_data=CPTAC_proteomics_ratio_log
+
+Ttest_list=list()
+Subtype=unique(sig_pathways_umap_2$Subtype2)%>%sort()
+for (  i in Subtype){
+  samples=sig_pathways_umap_2%>%dplyr::filter(Subtype2==i)%>%.$Sample_ID
+  Data=Pro_log_data%>%.[,samples]
+  Ttest=t(Data)%>%as.data.frame() %>%apply(2,function (x) (t.test(x))$p.value )%>%unlist()%>%as.data.frame()%>%setNames("pvalue") %>%mutate(padj=p.adjust(pvalue))
+ Mean_log=t(Data)%>%as.data.frame()%>%apply(2,function (x) mean(x))
+ Ttest_padj005=Ttest %>% mutate(log2Foldchange=Mean_log) %>%dplyr::filter(padj<0.05)
+  Ttest_list[[i]]=Ttest %>% mutate(log2Foldchange=Mean_log)%>%mutate(gene_symbol=rownames(.))
+
+}
+
+## GSEA (C2 and hallmark)
+
+GMT_files=list.files(file.path(Reference_path,"Human_GSEA","2023_2"),full.names = T)%>%.[grepl("gmt.txt",.)]%>%.[grepl("c2|h.",.)]
+
+Fgsea_output=list()
+for ( i in names(Ttest_list) ){
+  res_p005=Ttest_list[[i]]%>%dplyr::filter(pvalue<0.05)
+  res_p005_rank=res_p005%>%arrange(log2Foldchange) %>%.[c("log2Foldchange")]%>%as.data.frame() %>%tibble::rownames_to_column()%>%na.omit()
+  
+  ranks <- tibble::deframe(res_p005_rank)
+
+ fgsea_list=list()
+ for (k in GMT_files){
+    name=gsub(".*/","",k)
+    name2=gsub(".symbols.gmt.txt","",name)
+    set.seed(12345)
+    pathway= fgsea::gmtPathways(k)
+    fgseaRes <- fgsea::fgseaMultilevel(pathway, ranks,
+                           minSize=5,
+                           maxSize=500,nPermSimple = 100000,eps = 0
+                           )
+    fgsea_list[[name2]]=fgseaRes
+
+}
+
+Fgsea_output[[i]]=do.call("rbind",fgsea_list)
+  
+}
+
+```
+
+```{r}
+# generate data set by using common pathways in four NES data from subtypes  
+colnames(Fgsea_output[[1]])
+all_Common_pathways=Reduce(intersect,lapply(Fgsea_output, function(x) x$pathway )   )
+
+all_pathways=lapply(Fgsea_output, function(x) x$pathway )%>%unlist()%>%as.character() %>%as.data.frame()%>%setNames("pathway")%>%unique
+All_NES_pvalue=lapply(Fgsea_output, FUN= function(x) x%>%as.data.frame()%>%dplyr::filter(pathway%in%all_Common_pathways)%>%.[c("pathway","NES","padj")]%>%matrix.please()%>%as.data.frame())%>%do.call("cbind",.)
+
+#%>%setNames(names(Fgsea_output)) 
+
+All_NES=lapply(Fgsea_output, FUN= function(x) x%>%as.data.frame()%>%dplyr::filter(pathway%in%all_Common_pathways)%>%.[c("pathway","NES")]%>%matrix.please()%>%as.data.frame())%>%do.call("cbind",.)%>%setNames(names(Fgsea_output)) 
+Fgsea_output$CHKIRC_Primary_type1
+ALL_NES_imput=lapply(Fgsea_output, FUN= function(x) all_pathways%>%left_join(.,x[,c("pathway","NES","padj")])%>%mutate(NES=ifelse(is.na(NES),0,NES))%>%mutate(padj=ifelse(is.na(padj),1,padj))%>%matrix.please())%>%do.call("cbind",.)%>%as.data.frame()
+
+
+colnames(ALL_NES_imput)=sapply(names(Fgsea_output),function(x) paste0(x,c("_NES","_padj")) )%>%as.character()
+ 
+rownames(ALL_NES_imput)%>%.[grepl("\\.",.)]
+
+Sig_pathways=lapply(Fgsea_output, FUN= function(x) x%>%dplyr::filter(padj<0.05)%>%.$pathway ) %>%unlist()%>%as.character()%>%unique()
+Common_pathways=Reduce(intersect,lapply(Fgsea_output, function(x) x%>%dplyr::filter(pathway%in%Sig_pathways)%>%.$pathway )   )
+Sig_NES=lapply(Fgsea_output, FUN= function(x) x%>%as.data.frame()%>%dplyr::filter(pathway%in%Common_pathways)%>%.[c("pathway","NES")]%>%matrix.please()%>%as.data.frame())%>%do.call("cbind",.)%>%setNames(names(Fgsea_output))
+
+
+# Glycolysis, TCA cycle, Fatty acid, OXFO pathways
+
+
+# # Choose  four gene sets and do kmeans analysis
+select_path=rownames(Sig_NES)%>% .[grepl("GLYCOLYSIS|TCA|FATTY_ACID|OXIDATIVE_PHOS|CIRTAT_ACID|PYRUVATE",.)]%>%as.character()%>% .[grepl("WP_|KEGG",.)]%>%.[!grepl("GLUCONEOGENESIS",.)]
+Data_select=Sig_NES%>%.[select_path,]
+
+set.seed(12345)
+Data_select_kmeans=kmeans(Data_select,centers = 5,algorithm ="MacQueen")
+Data_select_kmeans[[2]]
+
+P2=pheatmap_pathway_NES(Data_select,"Metabolism" )
+
+
+All_NES_select=All_NES_pvalue[select_path,]%>%.[,grepl("padj",colnames(.))] %>%mutate(MAX_padj=apply(.,1,max))
+#%>%dplyr::filter(MAX_padj<0.08)
+All_NES_select_all_p005=All_NES%>%.[rownames(All_NES_select),]
+```
+
+
+```{r,include=T}
+knitr::kable(All_NES_select_all_p005,caption="select pathways") %>%kableExtra::kable_styling(latex_options = c("hold_position","scale_down"))
+```
+
+
+```{r}
+common_pathway_names= intersect( paste0(select_path,"_Normalized_singscore"), colnames(CPTAC_norm_singscore) )
+
+select_path_singscore=CPTAC_norm_singscore %>%.[,common_pathway_names]
+
+Pathway_list=c("WHITFIELD_CELL_CYCLE_G2_M", "FISCHER_G1_S_CELL_CYCLE","FISCHER_G2_M_CELL_CYCLE","REACTOME_CELL_CYCLE_MITOTIC")
+
+new_name="G1_S_M_CELL_CYCLE"
+
+Plot_list=list()
+for (i in 1:length(Ttest_list)){
+ data=Ttest_list[[i]]%>%na.omit()
+ Plot_list[[i]]= Valcano_plot_pathway_list(data,GSEA_pathway_list,Pathway_list,new_name)+ggtitle(names(Ttest_list)[i])
+
+  
+}
+
+
+```
+
+
+```{r,fig.width=12,fig.height=6}
+V2=cowplot::plot_grid(plotlist = Plot_list,nrow=1)+ggtitle(new_name)
+```
+
+
+```{r}
+Cell_cycle_genelist=Pathway_list_gene_name(GSEA_pathway_list,Pathway_list,new_name)
+Type1_top=Ttest_list[[1]]%>%dplyr::filter(gene_symbol%in%Cell_cycle_genelist) %>%arrange(padj)%>%dplyr::filter(log2Foldchange>0.57)
+Type2_top=Ttest_list[[2]]%>%dplyr::filter(gene_symbol%in%Cell_cycle_genelist) %>%arrange(padj)%>%dplyr::filter(log2Foldchange>0.57)
+
+
+Ttest_list[[1]]%>%as.data.frame()%>%dplyr::filter(grepl("GIT2",gene_symbol))
+Common_genes=intersect(Type1_top$gene_symbol,Type2_top$gene_symbol)
+
+
+Common_genes_data=Pro_log_data[Common_genes,]%>%t()
+
+Gene_singscore_combination= cbind(Common_genes_data,select_path_singscore)
+
+Cor_data_list=list()
+
+for (i in colnames(Common_genes_data)){
+  gene_exp=Gene_singscore_combination[,i]
+  gene_cor_list=list()
+  for(h in colnames(select_path_singscore)){
+    Singscore_data=Gene_singscore_combination[,h]
+    CORR=cor.test(gene_exp,Singscore_data)
+    gene_cor_list[[h]]=data.frame(pvalue= CORR$p.value,Corr=CORR$estimate)
+  }
+  Cor_data_list[[i]]=do.call("rbind",gene_cor_list)%>%as.data.frame() 
+}
+
+Cor_data=Cor_data_list%>%do.call("cbind",.) %>%as.data.frame()%>%arrange(desc(PSMB9.pvalue))
+Cor_data%>%.[grepl("GIT2",colnames(.))]
+
+
+Cor_data_corr_sort=Cor_data%>%.[,grepl("Corr",colnames(.))]%>%t()%>%as.data.frame()%>%mutate(MEAN_coff=apply(.,1,function(x) out=mean(abs(x))))%>%arrange(desc(MEAN_coff))%>%.[1:10,]%>%na.omit()%>%select(-MEAN_coff)
+rownames(Cor_data_corr_sort)=gsub(".Corr","",rownames(Cor_data_corr_sort))
+
+
+library(tidyverse)
+# Cor_data_corr=Cor_data%>%.[,grepl("Corr",colnames(.))]%>%t()%>%as.data.frame()%>% rownames_to_column()%>%
+#   pivot_longer(-1)%>%as.data.frame() %>%mutate(rowname=gsub(".Corr","",rowname))
+
+Cor_data_corr=Cor_data_corr_sort%>% rownames_to_column()%>% pivot_longer(-1)%>%as.data.frame() %>%mutate(rowname=gsub(".Corr","",rowname))
+Cor_data_corr$name=factor(Cor_data_corr$name,levels=unique(rownames(Cor_data)))
+```
+
+
+```{r}
+CPTAC_Cor_data_corr=Cor_data_corr
+CPTAC_cor_pvalue=Cor_data%>%.[,grepl("pvalue",colnames(.))]%>%t()%>%as.data.frame()
+rownames(CPTAC_cor_pvalue)=gsub(".pvalue","",rownames(CPTAC_cor_pvalue))
+
+CPTAC_cor_pvalue_2=CPTAC_cor_pvalue%>% rownames_to_column()%>%.[match(rownames(Cor_data_corr_sort),.$rowname), ]%>%
+  pivot_longer(-1)%>%as.data.frame()%>% 
+  mutate(sig_text = case_when(
+                      value >= 0.05 ~ "ns",
+                      0.05 > value & value > 0.01 ~ "*",
+                      0.01 >= value & value > 0.001 ~ "**",
+                      value <=0.001 ~ "***",
+                      .default = "error")) 
+CPTAC_cor_pvalue_2$rowname=factor(CPTAC_cor_pvalue_2$rowname,levels=unique(CPTAC_cor_pvalue_2$rowname))
+CPTAC_cor_pvalue_2$name=factor(CPTAC_cor_pvalue_2$name,levels=unique(CPTAC_cor_pvalue_2$name))
+
+```
+
+
+```{r,fig.width=12,fig.height=16}
+C2=ggplot(CPTAC_Cor_data_corr,aes(x = name, y = rowname)) +geom_tile(aes( fill = value)) +
+  coord_equal() +
+  scale_fill_gradient2(low = "blue3", mid = "white", high = "red3") +geom_text(label=CPTAC_cor_pvalue_2$sig_text, size=5) +
+  labs(x = NULL, y = NULL)+theme(axis.text.x =element_text(angle=90) )
+```
+
+
+```{r,fig.height=12,fig.width=20,include=T}
+cowplot::plot_grid(P1$gtable,P2$gtable,nrow=1,labels=c("KIRC","CPTAC"))
+```
+
+```{r,fig.height=16,fig.width=12,include=T}
+cowplot::plot_grid(C1,C2,ncol=2,labels=c("KIRC","CPTAC"),vjust=3)
+```
+
+```{r,fig.height=8,fig.width=12,include=T}
+cowplot::plot_grid(V1,V2,nrow=2,labels=c("KIRC","CPTAC"),hjust=-0.5,vjust=-0.5)
+```
+
+```{r}
+knitr::knit_exit()
+```
+
+
+# NC (GIT2 does not show good correlation with energy metabolism. Why?)
+
+```{r,include=F}
+load(file.path(Rawdata_path,"NC_230", "T2_T4_subtype_clin.rdata")  )
+
+T1_T2=NC_200_T2_T4_subtype_clin%>%dplyr::filter(Stage%in%c("I","II"))
+NC_sig_UMAP=read.csv(file.path(Rawdata_path,"NC_230","232_NC_subtypes_UMAP_sig_pathways.csv"))
+
+NC_2022_expression_half_imputation_data=read.table(file.path(Rawdata_path,"200_NC_CCRCC_proteomics/data.MBR.int.half.imputation.txt"),header=T,sep="\t",fill=T)
+
+NC_2022_imputation_expression_data_matrix=NC_2022_expression_half_imputation_data [,c(3:466)]
+rownames(NC_2022_imputation_expression_data_matrix)=NC_2022_expression_half_imputation_data$Gene.Symbol
+
+Normal_samples=NC_2022_imputation_expression_data_matrix %>% .[,grepl("TA",colnames(.) )]
+Tumor_samples=NC_2022_imputation_expression_data_matrix %>% .[,grepl("_T$",colnames(.) )]
+
+Data_match=data.frame(Normal_ID=colnames(Normal_samples)) %>%mutate(sample_ID=gsub("_TA","" ,Normal_ID)) %>%arrange(sample_ID) %>%mutate(Tumor_ID=paste0(sample_ID,"_T"))
+
+Normal_samples_sort=Normal_samples[,Data_match$Normal_ID]
+Tumor_samples_sort=Tumor_samples[,Data_match$Tumor_ID]
+
+colnames(Tumor_samples_sort)==Data_match$Tumor_ID
+colnames(Normal_samples_sort)==Data_match$Normal_ID
+
+# select common genes in other two cohorts
+NC_CCRCC_Pro_ratio=as.data.frame(Tumor_samples_sort/Normal_samples_sort)%>%.[rownames(.) %in% c(rownames(Pro_log_data),"ACTB"),] 
+NC_CCRCC_Pro_ratio_log=NC_CCRCC_Pro_ratio%>%log2()
+
+
+Pro_log_data_from_pathway=NC_CCRCC_Pro_ratio_log
+Pro_log_data_from_pathway2=Pro_log_data_from_pathway%>%t()%>%as.data.frame()%>%mutate(Sample_ID=rownames(.))%>%left_join(.,NC_sig_UMAP[,c("Sample_ID","Subtype2")])%>%arrange(Subtype2)
+rownames(Pro_log_data_from_pathway2)=Pro_log_data_from_pathway2$Sample_ID
+
+sig_pathways_umap_2=NC_sig_UMAP%>%dplyr::filter(Sample_ID%in%T1_T2$Sample_ID)
+Pro_log_data=NC_CCRCC_Pro_ratio_log[,T1_T2$Sample_ID]
+
+load(file.path(Rawdata_path,"200_NC_CCRCC_proteomics","NC_200_normalized_singscore.data"))
+
+common_pathway_names= intersect( paste0(select_path,"_Normalized_singscore"), colnames(NC_cohort_singscore_norm) )
+
+select_path_singscore=NC_cohort_singscore_norm %>%.[,common_pathway_names]%>%.[T1_T2$Sample_ID,]
+```
+
+```{r}
+Ttest_list=list()
+Subtype=unique(sig_pathways_umap_2$Subtype2)%>%sort()
+for (  i in Subtype){
+  samples=sig_pathways_umap_2%>%dplyr::filter(Subtype2==i)%>%.$Sample_ID
+  Data=Pro_log_data%>%.[,samples]
+  Ttest=t(Data)%>%as.data.frame() %>%apply(2,function (x) (t.test(x))$p.value )%>%unlist()%>%as.data.frame()%>%setNames("pvalue") %>%mutate(padj=p.adjust(pvalue))
+ Mean_log=t(Data)%>%as.data.frame()%>%apply(2,function (x) mean(x))
+ Ttest_padj005=Ttest %>% mutate(log2Foldchange=Mean_log) %>%dplyr::filter(padj<0.05)
+  Ttest_list[[i]]=Ttest %>% mutate(log2Foldchange=Mean_log)%>%mutate(gene_symbol=rownames(.))
+
+}
+
+## GSEA (C2 and hallmark)
+
+GMT_files=list.files(file.path(Reference_path,"Human_GSEA","2023_2"),full.names = T)%>%.[grepl("gmt.txt",.)]%>%.[grepl("c2|h.",.)]
+
+Fgsea_output=list()
+for ( i in names(Ttest_list) ){
+  res_p005=Ttest_list[[i]]%>%dplyr::filter(pvalue<0.05)
+  res_p005_rank=res_p005%>%arrange(log2Foldchange) %>%.[c("log2Foldchange")]%>%as.data.frame() %>%tibble::rownames_to_column()%>%na.omit()
+  
+  ranks <- tibble::deframe(res_p005_rank)
+
+ fgsea_list=list()
+ for (k in GMT_files){
+    name=gsub(".*/","",k)
+    name2=gsub(".symbols.gmt.txt","",name)
+    set.seed(12345)
+    pathway= fgsea::gmtPathways(k)
+    fgseaRes <- fgsea::fgseaMultilevel(pathway, ranks,
+                           minSize=5,
+                           maxSize=500,nPermSimple = 10000,eps = 0
+                           )
+    fgsea_list[[name2]]=fgseaRes
+
+}
+
+Fgsea_output[[i]]=do.call("rbind",fgsea_list)
+  
+}
+
+names(Fgsea_output)
+```
+
+```{r}
+# generate data set by using common pathways in four NES data from subtypes  
+colnames(Fgsea_output[[1]])
+all_Common_pathways=Reduce(intersect,lapply(Fgsea_output, function(x) x$pathway )   )
+
+all_pathways=lapply(Fgsea_output, function(x) x$pathway )%>%unlist()%>%as.character() %>%as.data.frame()%>%setNames("pathway")%>%unique
+All_NES_pvalue=lapply(Fgsea_output, FUN= function(x) x%>%as.data.frame()%>%dplyr::filter(pathway%in%all_Common_pathways)%>%.[c("pathway","NES","padj")]%>%matrix.please()%>%as.data.frame())%>%do.call("cbind",.)
+
+#%>%setNames(names(Fgsea_output)) 
+
+All_NES=lapply(Fgsea_output, FUN= function(x) x%>%as.data.frame()%>%dplyr::filter(pathway%in%all_Common_pathways)%>%.[c("pathway","NES")]%>%matrix.please()%>%as.data.frame())%>%do.call("cbind",.)%>%setNames(names(Fgsea_output)) 
+Fgsea_output$CHKIRC_Primary_type1
+ALL_NES_imput=lapply(Fgsea_output, FUN= function(x) all_pathways%>%left_join(.,x[,c("pathway","NES","padj")])%>%mutate(NES=ifelse(is.na(NES),0,NES))%>%mutate(padj=ifelse(is.na(padj),1,padj))%>%matrix.please())%>%do.call("cbind",.)%>%as.data.frame()
+
+
+colnames(ALL_NES_imput)=sapply(names(Fgsea_output),function(x) paste0(x,c("_NES","_padj")) )%>%as.character()
+ 
+rownames(ALL_NES_imput)%>%.[grepl("\\.",.)]
+
+Sig_pathways=lapply(Fgsea_output, FUN= function(x) x%>%dplyr::filter(padj<0.05)%>%.$pathway ) %>%unlist()%>%as.character()%>%unique()
+Common_pathways=Reduce(intersect,lapply(Fgsea_output, function(x) x%>%dplyr::filter(pathway%in%Sig_pathways)%>%.$pathway )   )
+Sig_NES=lapply(Fgsea_output, FUN= function(x) x%>%as.data.frame()%>%dplyr::filter(pathway%in%Common_pathways)%>%.[c("pathway","NES")]%>%matrix.please()%>%as.data.frame())%>%do.call("cbind",.)%>%setNames(names(Fgsea_output))
+
+
+# Glycolysis, TCA cycle, Fatty acid, OXFO pathways
+
+set.seed(12345)
+# Choose  four gene sets and do kmeans analysis
+select_path=rownames(Sig_NES)%>% .[grepl("GLYCOLYSIS|TCA|FATTY_ACID|OXIDATIVE_PHOS|CIRTAT_ACID|PYRUVATE",.)]%>%as.character()%>% .[grepl("WP_|KEGG",.)]%>%.[!grepl("GLUCONEOGENESIS",.)]
+Data_select=Sig_NES%>%.[select_path,]
+
+Data_select_kmeans=kmeans(Data_select,centers = 5,algorithm ="MacQueen")
+Data_select_kmeans[[2]]
+
+P1=pheatmap_pathway_NES(Data_select,"Metabolism" )
+
+
+All_NES_select=All_NES_pvalue[select_path,]%>%.[,grepl("padj",colnames(.))] %>%mutate(MAX_padj=apply(.,1,max))
+#%>%dplyr::filter(MAX_padj<0.08)
+All_NES_select_all_p005=All_NES%>%.[rownames(All_NES_select),]
+knitr::kable(All_NES_select_all_p005,caption="select pathways") %>%kableExtra::kable_styling(latex_options = c("hold_position","scale_down"))
+```
+
+
+```{r}
+
+Pathway_list=c("WHITFIELD_CELL_CYCLE_G2_M", "FISCHER_G1_S_CELL_CYCLE","FISCHER_G2_M_CELL_CYCLE","REACTOME_CELL_CYCLE_MITOTIC")
+
+new_name="G1_S_M_CELL_CYCLE"
+
+Plot_list=list()
+for (i in 1:length(Ttest_list)){
+ data=Ttest_list[[i]]%>%na.omit()
+ Plot_list[[i]]= Valcano_plot_pathway_list(data,GSEA_pathway_list,Pathway_list,new_name)+ggtitle(names(Ttest_list)[i])
+
+  
+}
+
+
+```
+
+
+```{r,fig.width=12,fig.height=16,include=T}
+V3=cowplot::plot_grid(plotlist = Plot_list,nrow=2)+ggtitle(new_name)
+```
+
+
+```{r}
+Cell_cycle_genelist=Pathway_list_gene_name(GSEA_pathway_list,Pathway_list,new_name)
+Type1_top=Ttest_list[[1]]%>%dplyr::filter(gene_symbol%in%Cell_cycle_genelist) %>%arrange(padj)%>%dplyr::filter(log2Foldchange>0.54)
+Type2_top=Ttest_list[[2]]%>%dplyr::filter(gene_symbol%in%Cell_cycle_genelist) %>%arrange(padj)%>%dplyr::filter(log2Foldchange>0.54)
+Ttest_list[[1]]%>%dplyr::filter(gene_symbol%in%c("GIT2"))
+```
+```{r}
+Ttest_list[[1]]%>%as.data.frame()%>%dplyr::filter(grepl("GIT2",gene_symbol))
+Common_genes=intersect(Type1_top$gene_symbol,Type2_top$gene_symbol)
+
+Common_genes_data=Pro_log_data[Common_genes,]%>%t()
+
+Gene_singscore_combination= cbind(Common_genes_data,select_path_singscore)
+
+Cor_data_list=list()
+
+for (i in colnames(Common_genes_data)){
+  gene_exp=Gene_singscore_combination[,i]
+  gene_cor_list=list()
+  for(h in colnames(select_path_singscore)){
+    Singscore_data=Gene_singscore_combination[,h]
+    CORR=cor.test(gene_exp,Singscore_data)
+    gene_cor_list[[h]]=data.frame(pvalue= CORR$p.value,Corr=CORR$estimate)
+  }
+  Cor_data_list[[i]]=do.call("rbind",gene_cor_list)%>%as.data.frame() 
+}
+
+Cor_data=Cor_data_list%>%do.call("cbind",.) %>%as.data.frame()
+
+Cor_data%>%.[grepl("GIT2",colnames(.))]
+  
+Cor_data_corr_sort=Cor_data%>%.[,grepl("Corr",colnames(.))]%>%t()%>%as.data.frame()%>%mutate(MEAN_coff=apply(.,1,function(x) out=mean(abs(x))))%>%arrange(desc(MEAN_coff))%>%na.omit()
+#%>%select(-MEAN_coff)
+rownames(Cor_data_corr_sort)=gsub(".Corr","",rownames(Cor_data_corr_sort))
+Cor_data_corr_sort["GIT2",]
+
+library(tidyverse)
+# Cor_data_corr=Cor_data%>%.[,grepl("Corr",colnames(.))]%>%t()%>%as.data.frame()%>% rownames_to_column()%>%
+#   pivot_longer(-1)%>%as.data.frame() %>%mutate(rowname=gsub(".Corr","",rowname))
+
+Cor_data_corr=Cor_data_corr_sort%>% rownames_to_column()%>% pivot_longer(-1)%>%as.data.frame() %>%mutate(rowname=gsub(".Corr","",rowname))
+Cor_data_corr$rowname=factor(Cor_data_corr$rowname,levels=unique(Cor_data_corr$rowname) )
+Cor_data_corr$name=factor(Cor_data_corr$name,levels=unique(Cor_data_corr$name))
+
+
+```
+
+
+```{r,fig.width=12,fig.height=16}
+C2=ggplot(Cor_data_corr,aes(x = name, y = rowname)) +geom_tile(aes( fill = value)) +
+  coord_equal() +
+  scale_fill_gradient2(low = "blue3", mid = "white", high = "red3") +
+  labs(x = NULL, y = NULL)+theme(axis.text.x =element_text(angle=90) )
+```
+
+
+
+
+
+
+```{r}
+knitr::knit_exit()
+```
+
+
+
+
+
+```{r,fig.width=15,fig.height=15}
+
+set.seed(12345)
+# Choose  four gene sets and do kmeans analysis
+KEGG_WP_HALLMARK_REC=rownames(Sig_NES)%>% .[grepl("WP|HALLMARK|KEGG",.)]%>%as.character()
+Sig_NES_select=Sig_NES%>%.[KEGG_WP_HALLMARK_REC,]
+
+Sig_kmeans=kmeans(Sig_NES_select,centers = 5,algorithm ="MacQueen")
+CLuster2=Sig_kmeans[[1]]%>%as.data.frame()%>%setNames("Cluster")%>%as.data.frame()%>%dplyr::filter(Cluster==2) # Invastion typ1 high but primary type1 low
+
+Kmeans_plot=list()
+for (i in rownames(Sig_kmeans$centers) ){
+  Cluster2=Sig_kmeans[1]$cluster%>%as.data.frame()%>%setNames("Cluster")%>%as.data.frame()%>%dplyr::filter(Cluster==i)
+  Data_select=Sig_NES%>%.[rownames(Cluster2),]
+
+  Kmeans_plot[[i]]=pheatmap_pathway_NES(Data_select,paste0("Cluster_",i ))[[4]]
+  
+}
+
+```
+
+
+```{r,fig.width=30,fig.height=20}
+cowplot::plot_grid(plotlist = Kmeans_plot,nrow=2)
+
+
+```
+
+```{r,fig.width=15,fig.height=15}
+set.seed(12345)
+# Choose  four gene sets and do kmeans analysis
+REAC_path=rownames(Sig_NES)%>% .[grepl("REAC",.)]%>%as.character()
+REAC_path_NES_select=Sig_NES%>%.[REAC_path,]
+
+REAC_path_NES_kmeans=kmeans(REAC_path_NES_select,centers = 5,algorithm ="MacQueen")
+REAC_path_NES_kmeans[[2]]
+
+REAC_Kmeans_plot=list()
+for (i in rownames(REAC_path_NES_kmeans[[2]]) ){
+  Cluster2=REAC_path_NES_kmeans[1]$cluster%>%as.data.frame()%>%setNames("Cluster")%>%as.data.frame()%>%dplyr::filter(Cluster==i)
+  Data_select=Sig_NES%>%.[rownames(Cluster2),]
+
+  REAC_Kmeans_plot[[i]]=pheatmap_pathway_NES(Data_select,paste0("Cluster_",i ))[[4]]
+  
+}
+```
+
+
+
+# EPITHELIAL MESENCHYMAL TRANSITION,PI3K AKT SIGNALING PATHWAY,COMPLEMENT
+
+```{r,fig.width=12,fig.height=8}
+
+set.seed(12345)
+# Choose  four gene sets and do kmeans analysis
+select_path=rownames(Sig_NES)%>% .[grepl("_MESENCHYMAL_TRANSITION|PI3K_AKT|APOPTOSIS|COMPLEMENT",.)]%>%as.character()
+Data_select=Sig_NES%>%.[select_path,]
+
+Data_select_kmeans=kmeans(Data_select,centers = 5,algorithm ="MacQueen")
+Data_select_kmeans[[2]]
+
+pheatmap_pathway_NES(Data_select,"Metabolism" )
+  
+All_NES_select=All_NES_pvalue[select_path,]
+knitr::kable(All_NES_select,caption="select pathways") %>%kableExtra::kable_styling(latex_options = c("hold_position","scale_down"))
+
+```
+
+```{r,fig.width=45,fig.height=30}
+cowplot::plot_grid(plotlist = REAC_Kmeans_plot[c(1,4,2,3,5)],nrow=2)
+
+
+```
+
+
+
+
+
+```{r,fig.width=12,fig.height=22}
+Cluster_anno=data.frame(Cluster=c(1:5),Type=c("DN_in_all_subtypes","UP_in_all_subtypes",
+                                              "DN_in_type1_UP_in_type2","DN_in_all_subtypes", "UP_in_all_subtypes","Up_in_invasion_type1_DN_in_invasion_type2","Only_Type1_up_primary_invasion","Type1_DN_in_Primary_normal"))
+```
+
+
+# NES data with Imputing data
+
+
+```{r}
+# generate data set by using imputing NES pathways from subtypes  
+
+Sig_imput_pathways=ALL_NES_imput%>%.[,grepl("padj" ,colnames(.) )]%>% filter_at(vars(colnames(.)),all_vars(.<0.05))                                                                             #%>%as.data.frame()%>%setNames("MIN")%>%mutate(pathway=rownames(ALL_NES_imput)) %>%dplyr::filter(MIN<0.05)
+
+Sig_imput_pathways=ALL_NES_imput%>%.[,grepl("padj" ,colnames(.) )]%>%mutate(MIN=apply(.,1,min)) %>%mutate(pathway=rownames(ALL_NES_imput)) %>%dplyr::filter(MIN<0.05)
+
+setdiff(rownames(Sig_imput_pathways),rownames(ALL_NES_imput))
+
+Sig_imput_pathways_2=ALL_NES_imput%>%as.data.frame()%>%mutate(pathway=rownames(.))%>%dplyr::filter(pathway%in%rownames(Sig_imput_pathways))%>%.[,colnames(.)[grepl("NES",colnames(.) )]]%>% as.data.frame()
+
+```
+
+
+```{r,fig.width=12,fig.height=42}
+KEGG_WP_HALLMARK_REC=rownames(Sig_imput_pathways_2)%>% .[grepl("WP|HALLMARK|KEGG",.)]%>%as.character()%>%unique()
+
+Sig_imput_NES_select=Sig_imput_pathways_2 %>%.[KEGG_WP_HALLMARK_REC,]%>%as.data.frame()
+
+pheatmap_pathway_NES(Sig_imput_NES_select,"GSEA NES data" )
+
+Sig_imput_NES_select$CHKIRC_Primary_type1_NES
+rownames( Sig_imput_pathways_2)%>%.[grepl("\\.",.)]
+```
+
+
+
+```{r,fig.width=12,fig.height=12}
+Key_sig_pathways=rownames(Sig_imput_pathways_2) %>%.[grepl(c("OXIDATIVE_PHOSPHORYLATION|FATTY_ACID|G2M|PPAR|ANTIGEN|VEGF|CELL_CYCLE"),.)]
+
+
+Common_pathways_NES_select= Sig_imput_pathways_2%>%.[Key_sig_pathways,]
+
+pheatmap_pathway_NES(Common_pathways_NES_select,"GSEA NES data" )
+```
+
+
+```{r,fig.height=15,fig.width=10}
+Key_sig_pathways=rownames(Sig_imput_pathways_2) %>%.[grepl(c("OXIDATIVE_PHOSPHORYLATION|FATTY_ACID|G2M|PPAR|ANTIGEN|VEGF|CELL_CYCLE"),.)]
+
+Sig_imput_NES_select=Sig_imput_pathways_2 %>%.[KEGG_WP_HALLMARK_REC,]
+
+Common_imput_pathways_NES_select= Sig_imput_pathways_2%>%.[Key_sig_pathways,]
+
+pheatmap_pathway_NES(Common_imput_pathways_NES_select,"GSEA NES data" )
+
+```
+
+```{r,fig.width=14,fig.height=14}
+Key_sig_pathways=rownames(Sig_NES) %>%.[grepl(c("OXIDATIVE_PHOSPHORYLATION|FATTY_ACID|G2M|PPAR|ANTIGEN|VEGF|CELL_CYCLE"),.)]
+
+
+Common_pathways_NES_select= Sig_NES%>%.[Key_sig_pathways,]
+
+pheatmap_pathway_NES(Common_pathways_NES_select,"GSEA NES data" )
+
+
+```
+
+# Type1 and 2 signature (from single pathway enrichment)
+
+```{r}
+Key_sig_pathways=colnames(sig_pathways_umap)%>%.[grepl("singscore",.)]%>%gsub("_Normalized_singscore","",.)%>%na.omit()
+Key_sig_pathways
+Key_sig_pathways_2=c("KEGG_PENTOSE_PHOSPHATE_PATHWAY","WP_PI3K_AKT_SIGNALING_PATHWAY","WP_TGF_BETA_SIGNALING_PATHWAY",Key_sig_pathways)
+Common_pathways_NES_select= Sig_imput_pathways_2 %>%.[Key_sig_pathways_2,]%>%na.omit()
+pheatmap_pathway_NES(Common_pathways_NES_select,"GSEA NES data" )
+
+setdiff(rownames(Common_pathways_NES_select),Key_sig_pathways)
+```
+
+```{r}
+Common_pathways_NES_select= All_NES %>%.[Key_sig_pathways_2,]%>%na.omit()
+pheatmap_pathway_NES(Common_pathways_NES_select,"GSEA NES data" )
+setdiff(rownames(Common_pathways_NES_select),Key_sig_pathways)
+
+```
+
+ 
+```{r}
+Valcano_plot_new_2=function(Data,Pathway_list,pathway_name){
+  pathway_genes=Pathway_list [[pathway_name]]%>%as.character()
+ 
+  library(ggrepel)
+  Data=Data%>%.[.$gene_symbol%in%pathway_genes,]
+  # add a column of NAs
+  de=Data %>%mutate(diffexpressed=ifelse(pvalue>0.05,"NO",ifelse(log2Foldchange>0,"UP","DOWN")))
+  de$delabel <- NA
+  de$delabel[de$diffexpressed != "NO"] <- de$gene_symbol[de$diffexpressed != "NO"]
+  
+  # plot adding up all layers we have seen so far
+  ggplot(data=de, aes(x=log2Foldchange, y=-log10(pvalue), col=diffexpressed, label=delabel)) +
+    geom_point() + ggtitle(pathway_name)+
+    theme_minimal() +
+    geom_text_repel(max.overlaps = Inf ) +
+    scale_color_manual(values=c("DOWN"="blue", "NO"= "black","UP"= "red")) +
+    geom_vline(xintercept=c(-0.6, 0.6), col="red") +
+    geom_hline(yintercept=-log10(0.05), col="red")
+  
+  
+  
+  
+}
+
+
+Valcano_plot_pathway_list=function(Data,Pathway_list,pathway_name_list,Combined_path_name){
+  name_list=list()
+  for (i in 1:length(pathway_name_list)){
+    pathway_name=pathway_name_list[i]
+    pathway_genes=Pathway_list[[pathway_name]]%>%as.character()
+    name_list[[i]]=pathway_genes
+  }
+  pathway_genes=unlist(name_list) %>%as.character() %>%unique()
+  # return(pathway_genes)
+  library(ggrepel)
+  Data=Data%>%.[.$gene_symbol%in%pathway_genes,]
+  # add a column of NAs
+  de=Data %>%mutate(diffexpressed=ifelse(pvalue>0.05,"NO",ifelse(log2Foldchange>0,"UP","DOWN")))
+  de$delabel <- NA
+  de$delabel[de$diffexpressed != "NO"] <- de$gene_symbol[de$diffexpressed != "NO"]
+  
+  # plot adding up all layers we have seen so far
+  ggplot(data=de, aes(x=log2Foldchange, y=-log10(pvalue), col=diffexpressed, label=delabel)) +
+    geom_point() + 
+    theme_minimal() +
+    geom_text_repel() +
+    scale_color_manual(values=c("blue", "black", "red")) +
+    geom_vline(xintercept=c(-0.6, 0.6), col="red") +
+    geom_hline(yintercept=-log10(0.05), col="red")
+  
+  
+  
+  
+}
+```
+
+
+```{r}
+Pathway="REACTOME_CELL_CYCLE_MITOTIC"  
+Pathway="FISCHER_G2_M_CELL_CYCLE"               
+Pathway="WHITFIELD_CELL_CYCLE_G2_M"       
+Valcano_plot_new(Protein_ratio_stat,GSEA_pathway_list,Pathway)
+```
+ 
+
+
+```{r}
+Pathway= "FISCHER_G2_M_CELL_CYCLE"  
+Valcano_plot_new_2(Ttest_list[[1]],GSEA_pathway_list,Pathway)
+
+
+```
+```{r}
+Pathway_list=c("WHITFIELD_CELL_CYCLE_G2_M", "FISCHER_G1_S_CELL_CYCLE","FISCHER_G2_M_CELL_CYCLE","REACTOME_CELL_CYCLE_MITOTIC")
+
+new_name="G1_S_M_CELL_CYCLE"
+
+Plot_list=list()
+for (i in 1:length(Ttest_list)){
+ Plot_list[[i]]= Valcano_plot_pathway_list(Ttest_list[[i]],GSEA_pathway_list,Pathway_list,new_name)+ggtitle(names(Ttest_list)[i])
+
+  
+}
+```
+
+
+```{r,fig.width=12,fig.height=12}
+cowplot::plot_grid(plotlist = Plot_list,nrow=2)+ggtitle(new_name)
+```
+
+
+```{r,fig.width=6,fig.height=10}
+plist=list()
+for(i in Inflammatory_pathways$pathway ) {
+
+ P1=fgsea::plotEnrichment(Mouse_gene_list[[i]],ranks) + labs(title="Model vs Control") 
+ P2=fgsea::plotEnrichment(Mouse_gene_list[[i]],ranks_drug) + labs(title="Drug vs Model") 
+#plist[[i]]=cowplot::plot_grid( P1,P2,labels=i,label_y = 0)
+ out=cowplot::plot_grid(P1,P2,ncol=2)
+title <- cowplot::ggdraw() + 
+  cowplot::draw_label(i,
+    fontface = 'bold',
+    x = 0,
+    hjust = 0) +
+  theme(
+    # add margin on the left of the drawing canvas,
+    # so title is aligned with left edge of first plot
+    plot.margin = margin(0, 0, 0, 7)
+  )
+plist[[i]]=cowplot::plot_grid(
+  title, out,
+  ncol = 1,
+  # rel_heights values control vertical title margins
+  rel_heights = c(0.1, 1)
+)
+}
+
+cowplot::plot_grid(plotlist = plist,ncol=1,labels = "")
+
+```
+
+
+
+
+```{r}
+fgsea_list=list()
+for (i in GMT_files){
+ name=gsub(".*/","",i)
+ name2=gsub(".v0.3.symbols.gmt.txt","",name)
+ pathway= fgsea::gmtPathways(i)
+ fgseaRes <- fgsea::fgseaMultilevel(pathway, ranks,
+                           minSize=5,
+                           maxSize=500
+                           )
+ fgsea_list[[name2]]=fgseaRes
+
+}
+
+Fgsea_all_mouse=do.call("rbind",fgsea_list)
+Fgsea_all_p005_mouse=Fgsea_all_mouse%>%dplyr::filter(pval<0.05)
+Fgsea_all_p001_mouse=Fgsea_all_mouse%>%dplyr::filter(pval<0.01)
+
+```
+
+
+
+```{r}
+res_q005_rank=Ttest_padj005["log2Foldchange"]%>% arrange(log2Foldchange) %>%as.data.frame() %>%tibble::rownames_to_column()
+fgsea_list=Fgesa_test_2(res_q005_rank)
+```
+
+### All pathway combine and pick up significant pathways by keywords enrichment
+```{r}
+All_pathway_singscore_p005=fgsea_list%>%dplyr::filter(padj<0.05)
+Pathway_keyword_pattern=stringr::str_split(All_pathway_singscore_p005$pathway,pattern="_")%>%unlist()
+key_words_enrichment=Pathway_enrichment_analysis(All_pathway_singscore_p005$pathway,6)
+key_words_enrichment [grepl("MITOCHONDRIA|PROLIFERATION|MESENCHYMAL|EPITHELIAL|CYCLE",key_words_enrichment$split),]
+
+```
+
+## Mitochondrial pathways in primary 
+
+
+```{r}
+Int_key_words=c( "FATTY", "OXIDATIVE","PHOSPHORYLATION","GLYCOLYSIS","TCA","LONG","CITRIC")
+Key_pathway=do.call("rbind", Pathway_select_by_keyword(All_pathway_singscore_p005$pathway,Int_key_words) ) %>%as.data.frame() %>%setNames("Keyword") %>% mutate(Keyword=gsub("TP53","P53" ,Keyword)) %>%arrange(Keyword)
+Key_pathway_anno=fgsea_list %>%.[.$pathway%in% rownames(Key_pathway) ,]
+# WP pathway
+WP_Key_pathway_anno=All_pathway_singscore_p005 %>%.[.$pathway%in% rownames(Key_pathway) ,] %>%.[,c("pathway","padj","NES")]%>%dplyr::filter(grepl("WP",pathway ))%>%arrange(NES)
+ 
+
+knitr::kable(Key_pathway_anno[,c(1:6)],caption = "Mitochondria energy metabolism")%>%kableExtra::kable_styling(latex_options = c("hold_position","scale_down"))
+```
+
+
+### Oxidative phosphorylation
+```{r}
+Pathway="WP_OXIDATIVE_PHOSPHORYLATION"
+ 
+Valcano_plot_new(Protein_ratio_stat,GSEA_pathway_list,Pathway)
+
+
+```
+
+### Fatty acid beta oxidation
+```{r}
+Pathway="REACTOME_FATTY_ACID_METABOLISM"
+Valcano_plot_new(Protein_ratio_stat,GSEA_pathway_list,Pathway)
+```
+### TCA cycle
+```{r}
+Pathway="REACTOME_THE_CITRIC_ACID_TCA_CYCLE_AND_RESPIRATORY_ELECTRON_TRANSPORT"  
+Valcano_plot_new(Protein_ratio_stat,GSEA_pathway_list,Pathway)
+```
+### Glycolysis (pvalue>0.05)
+```{r}
+Pathway="WP_GLYCOLYSIS_AND_GLUCONEOGENESIS" 
+# names(GSEA_pathway_list)[ grepl(Pathway,names(GSEA_pathway_list))]
+Valcano_plot_new(Protein_ratio_stat,GSEA_pathway_list,Pathway)
+```
+
+## EMT pathway AND ECM
+```{r}
+Int_key_words=c( "EMT","EPITHELIAL","EXTRACELLULAR")
+Key_pathway=do.call("rbind", Pathway_select_by_keyword(All_pathway_singscore_p005$pathway,Int_key_words) ) %>%as.data.frame() %>%setNames("Keyword") %>% mutate(Keyword=gsub("TP53","P53" ,Keyword)) %>%arrange(Keyword)
+Key_pathway_anno=fgsea_list %>%.[.$pathway%in% rownames(Key_pathway) ,]
+# WP pathway
+WP_Key_pathway_anno=All_pathway_singscore_p005 %>%.[.$pathway%in% rownames(Key_pathway) ,] %>%.[,c("pathway","padj","NES")]%>%dplyr::filter(grepl("WP",pathway ))%>%arrange(NES)
+ 
+
+knitr::kable(Key_pathway_anno[,c(1:6)],caption = "Mitochondria energy metabolism")%>%kableExtra::kable_styling(latex_options = c("hold_position","scale_down"))
+```
+
+```{r}
+Pathway= "HALLMARK_EPITHELIAL_MESENCHYMAL_TRANSITION"  
+Valcano_plot_new(Protein_ratio_stat,GSEA_pathway_list,Pathway)
+
+```
+
+
+```{r}
+Pathway= "REACTOME_EXTRACELLULAR_MATRIX_ORGANIZATION"  
+Valcano_plot_new(Protein_ratio_stat,GSEA_pathway_list,Pathway)
+```
+
+
+## Cell cycle was acitivated in primary&early invasion group
+
+```{r}
+
+Int_key_words=c("PROLIFERATION","CYCLE")
+
+Key_pathway=do.call("rbind", Pathway_select_by_keyword(All_pathway_singscore_p005$pathway,Int_key_words) ) %>%as.data.frame() %>%setNames("Keyword")%>%arrange(Keyword)
+
+# WP pathway
+Key_pathway_anno=All_pathway_singscore_p005 %>%.[.$pathway%in% rownames(Key_pathway) ,] %>%dplyr::filter(!grepl("TCA|CITRATE",pathway)) %>%.[,c("pathway","padj","NES")]%>%arrange(NES)
+#%>%dplyr::filter(grepl("KEGG|HALLMARK|REACTOM|WP",pathway))
+knitr::kable(Key_pathway_anno,caption = "Cell cycle")%>%kableExtra::kable_styling(latex_options = c("hold_position","scale_down"))
+
+```
+
+
+```{r}
+Pathway="REACTOME_CELL_CYCLE_MITOTIC"  
+Valcano_plot_new(Protein_ratio_stat,GSEA_pathway_list,Pathway)
+```
+
+```{r}
+Pathway="FISCHER_G2_M_CELL_CYCLE"               
+Valcano_plot_new(Protein_ratio_stat,GSEA_pathway_list,Pathway)
+
+```
+
+```{r}
+Pathway="WHITFIELD_CELL_CYCLE_G2_M"       
+Valcano_plot_new(Protein_ratio_stat,GSEA_pathway_list,Pathway)
+```
+
+
+```{r}
+Pathway= "FISCHER_G1_S_CELL_CYCLE"  
+Valcano_plot_new(Protein_ratio_stat,GSEA_pathway_list,Pathway)
+```
+
+
+### Combination of CELL CYEL PATHWAY
+```{r}
+Pathway_list=c("WHITFIELD_CELL_CYCLE_G2_M", "FISCHER_G1_S_CELL_CYCLE","FISCHER_G2_M_CELL_CYCLE","REACTOME_CELL_CYCLE_MITOTIC")
+
+new_name="G1_S_M_CELL_CYCLE"
+Valcano_plot_pathway_list(Protein_ratio_stat,GSEA_pathway_list,Pathway_list,new_name)
+
+```
+```{r}
+Pathway_list=c("WHITFIELD_CELL_CYCLE_G2_M", "FISCHER_G1_S_CELL_CYCLE","FISCHER_G2_M_CELL_CYCLE","REACTOME_CELL_CYCLE_MITOTIC")
+
+Cell_cycle_genelist= Pathway_list_combind_2 (GSEA_pathway_list,Pathway_list) 
+Cell_cycle_genelist_express=Gene_list_up_down(Protein_ratio_stat,Cell_cycle_genelist)
+Cell_cycle_genelist_express_up=Cell_cycle_genelist_express%>%dplyr::filter(diffexpressed=="UP")
+```
+
+### Calculate singscore by using upregulated genes in cell cycle gene list
+```{r}
+rankData_st= singscore::rankGenes(Pro_log_data)
+scoredf_st <- singscore::simpleScore(rankData_st, upSet = Cell_cycle_genelist_express_up$gene_symbol)
+Target_path=scoredf_st%>%mutate(Sample_ID=row.names(.))
+Genelist=Cell_cycle_genelist_express_up$gene_symbol
+plist_corr=list()
+for (i in Cell_cycle_genelist_express_up$gene_symbol){
+ Plus_keypath_data=Primary_proteomics_data %>%t()%>%as.data.frame() %>%mutate(Sample_ID=rownames(.)) %>%. [c("Sample_ID",i)] %>%left_join(.,Target_path)
+
+  data1=Plus_keypath_data[,i]
+  data2=Plus_keypath_data[,3]
+  correlation=cor.test(data1,data2)
+  output=data.frame(Cor.coeff=correlation$estimate,pvalue=correlation["p.value"] )
+  plist_corr[[i]]=output
+}
+
+Cellcycle_corr_pathway=do.call("rbind",  plist_corr) %>%arrange(p.value) %>%mutate(gene_symbol=row.names(.)) %>%left_join(.,Protein_ratio_stat)
+colnames(Cellcycle_corr_pathway)[1:3]=c("Cor_Cell_cycle_singscore.coeff","Cor_Cell_cycle_singscore.pvalue")
+knitr::kable(Cellcycle_corr_pathway,caption = "Correlation between Cell cycle related genes and cell cycle singscore") %>%kableExtra::kable_styling(latex_options = c("hold_position","scale_down") )
+```
+
+```{r}
+knitr::knit_exit()
+```
+
+
+```{r,eval=T}
+Int_key_words=c("PROLIFERATION","CYCLE")
+
+Key_pathway=do.call("rbind", Pathway_select_by_keyword(All_pathway_singscore_p005$pathway,Int_key_words) ) %>%as.data.frame() %>%setNames("Keyword")%>%arrange(Keyword)
+
+
+
+Key_pathway_anno=colnames(All_samples_singscore_umap)  %>%.[grepl("CELL_CYCLE|Cell_Cyle",.)]
+
+Target_path=All_samples_singscore_umap [,c(Key_pathway_anno,"Sample_ID") ]
+GIT2_plut_keypath_data=Primary_Early_Invasion_data %>%t()%>%as.data.frame() %>%mutate(Sample_ID=rownames(.)) %>%. [c("Sample_ID","GIT2")] %>%left_join(.,Target_path)
+plist_corr=list()
+Path_name=colnames(GIT2_plut_keypath_data)[grepl("singscore",colnames(GIT2_plut_keypath_data))]
+
+for (i in Path_name){
+  data1=GIT2_plut_keypath_data$GIT2
+  data2=GIT2_plut_keypath_data[,i]
+  correlation=cor.test(data1,data2)
+  output=data.frame(Cor.coeff=correlation$estimate,pvalue=correlation["p.value"] )
+  plist_corr[[i]]=output
+}
+GIT2_corr_pathway=do.call("rbind",plist_corr) %>%arrange(p.value)
+knitr::kable(GIT2_corr_pathway,caption = "The correlation between GIT2 and pathway") %>%kableExtra::kable_styling(latex_options = c("scale_down"))
+  
+```
+
+
+
+```{r}
+# Sig_genes=Significant_genes(Protein_ratio_stat,All_pathway_list,Pathway)%>%dplyr::filter(diffexpressed=="DOWN")
+# Corr_data=Correlation_batch(Pro_log_data_t,Sig_genes$gene_symbol)
+# 
+# 
+# Targe_gene_corr_combination=do.call("cbind",Corr_data)%>%.[,grepl("Cor",colnames(.))] %>%apply(.,2,mean)%>%as.data.frame()%>%setNames("Corr") %>%arrange(Corr)%>%.[grepl("GIT2",rownames(.)),]
+
+# Sig_genes=Significant_genes(Protein_ratio_stat,All_pathway_list,Pathway)%>%dplyr::filter(diffexpressed=="UP")
+# Corr_data=Correlation_batch(Pro_log_data_t,Sig_genes$gene_symbol)
+# 
+# 
+# Targe_gene_corr_combination=do.call("cbind",Corr_data)%>%.[,grepl("Cor",colnames(.))] %>%apply(.,2,mean)%>%as.data.frame()%>%setNames("Corr") %>%arrange(Corr)%>%.[grepl("GIT2",rownames(.)),]
+
+# Target_genes=c("ALDOA","ALDOC","LDHA","PKM","ENO2","PFKP")
+# Corr_data=Correlation_batch(Pro_log_data_t,Target_genes)
+# 
+# 
+# Targe_gene_corr_combination=do.call("cbind",Corr_data)%>%.[,grepl("Cor",colnames(.))] %>%apply(.,2,mean)%>%as.data.frame()%>%setNames("Corr") %>%arrange(desc(Corr))
+```
+
+
+```{r}
+Int_key_words=c("EXTRACELLULAR","APOPTOTIC","PROLIFERATION","MATRIX","GROWTH","CARCINOMA","HYPOXIA","MESENCHYMAL","MITOCHONDRIAL","CYCLE","COMPLEMENT",
+                "METASTASIS","FATTY","OXIDATION","MESENCHYMAL","ECM","MYC","P53","TP53","PHOSPHORYLATION","RENAL","GLYCOLYSIS")
+Key_pathway=do.call("rbind", Pathway_select_by_keyword(All_pathway_singscore_p005$pathway,Int_key_words) ) %>%as.data.frame() %>%setNames("Keyword") %>%
+       mutate(Keyword=gsub("TP53","P53" ,Keyword)) %>%arrange(Keyword)
+
+Key_pathway_anno=All_pathway_singscore_p005 %>%.[.$pathway%in% rownames(Key_pathway) ,] %>%.[,c("pathway","padj","NES")]
+```
+** Mitochondria engery metablsim in WP database
+
+
+
+
+```{r}
+# source (file.path(Public_funciton_path, "GSEA_all_pathway.R")) # pahtway list: GSEA C2P +Hallmark; 
+# source (file.path(Public_funciton_path, "Wikipathway.R"))
+# # 
+# # 
+# # install.packages("EcotoneFinder")
+# # 
+# Wikipathway_list=Wikipath_Genelist_2 
+# colnames(Wikipathway_list)=paste0("Wiki_",colnames(Wikipathway_list))
+# plist=list(Pathway_list,Wikipathway_list)
+# Full_Pathway_list= EcotoneFinder::cbindna(Wikipathway_list,Pathway_list)
+# colnames(Full_Pathway_list)=gsub(" ","_",colnames(Full_Pathway_list))
+# colnames(Full_Pathway_list)=gsub("__","_",colnames(Full_Pathway_list))
+# 
+# colnames(Full_Pathway_list)=gsub("\\(","_",colnames(Full_Pathway_list))
+# colnames(Full_Pathway_list)=gsub("\\)","_",colnames(Full_Pathway_list))
+# colnames(Full_Pathway_list)=gsub("-","_",colnames(Full_Pathway_list))
+# colnames(Full_Pathway_list)=gsub("\\.","_",colnames(Full_Pathway_list))
+# colnames(Full_Pathway_list)=gsub("C2CPG","C2CGP",colnames(Full_Pathway_list))
+# colnames(Full_Pathway_list)[duplicated(colnames(Full_Pathway_list))]
+# colnames(Full_Pathway_list)[grepl("Wiki",colnames(Full_Pathway_list) )]
+# colnames(Full_Pathway_list)=gsub("__","_",colnames(Full_Pathway_list))
+# 
+# write.table(Full_Pathway_list,file.path(Public_funciton_path, "Wiki_KEGG_C2CGP_full_pathway.txt"))
+# Public_funciton_path="/home/yang/tools/R/Public_database/function"
+# All_pathway_list=read.table(file.path(Public_funciton_path, "Wiki_KEGG_C2CGP_full_pathway.txt"))  
+# 
+# colnames(All_pathway_list)=gsub("_$","",colnames(All_pathway_list))
+# write.table(All_pathway_list,file.path(Public_funciton_path, "Wiki_KEGG_C2CGP_full_pathway.txt"))
+
+#########
+# Public_funciton_path="/home/yang/tools/R/Public_database/function"
+# 
+# All_pathway_list=read.table(file.path(Public_funciton_path, "Wiki_KEGG_C2CGP_full_pathway.txt"))  
+
+```
+
+
+
+
+```
+
+### Calculate singscore by using upregulated genes in cell cycle gene list
+```{r}
+rankData_st= singscore::rankGenes(Pro_log_data)
+scoredf_st <- singscore::simpleScore(rankData_st, upSet = Cell_cycle_genelist_express_up$gene_symbol)
+
+scoredf_st
+Target_path=scoredf_st%>%mutate(Sample_ID=row.names(.))
+Genelist=Cell_cycle_genelist_express_up$gene_symbol
+plist_corr=list()
+for (i in Cell_cycle_genelist_express_up$gene_symbol){
+ Plus_keypath_data=Primary_Early_Invasion_data %>%t()%>%as.data.frame() %>%mutate(Sample_ID=rownames(.)) %>%. [c("Sample_ID",i)] %>%left_join(.,Target_path)
+
+  data1=Plus_keypath_data[,i]
+  data2=Plus_keypath_data[,3]
+  correlation=cor.test(data1,data2)
+  output=data.frame(Cor.coeff=correlation$estimate,pvalue=correlation["p.value"] )
+  plist_corr[[i]]=output
+}
+
+Cellcycle_corr_pathway=do.call("rbind",  plist_corr) %>%arrange(p.value) %>%mutate(gene_symbol=row.names(.)) %>%left_join(.,Protein_ratio_stat)
+colnames(Cellcycle_corr_pathway)[1:3]=c("Cor_Cell_cycle_singscore.coeff","Cor_Cell_cycle_singscore.pvalue")
+knitr::kable(Cellcycle_corr_pathway,caption = "Correlation between Cell cycle related genes and cell cycle singscore") %>%kableExtra::kable_styling(latex_options = c("hold_position","scale_down") )
+```
+
+```{r}
+knitr::knit_exit()
+```
+
+```{r}
+Significant_genes=function(Data,Pathway_list,pathway_name){
+  pathway_genes=Pathway_list%>%.[,grepl(pathway_name,colnames(.))]%>%as.character()
+  
+  library(ggrepel)
+  Data=Data%>%.[.$gene_symbol%in%pathway_genes,]
+  # add a column of NAs
+  de=Data %>%mutate(diffexpressed=ifelse(padj>0.05,"NO",ifelse(log2Foldchange>0,"UP","DOWN")))
+  de$delabel <- NA
+   de$delabel[de$diffexpressed != "NO"] <- de$gene_symbol[de$diffexpressed != "NO"]
+   return(de)
+   
+}
+
+ 
+ 
+Correlation_batch=function(data,Target_genes){ 
+ qlist=list()
+ for (q in colnames(data)) {
+  plist_corr_gene=list()
+  for (i in Target_genes){
+   data1=data[,q]
+   data2=data[,i]
+   correlation=cor.test(data1,data2)
+   output=data.frame(Cor.coeff=correlation$estimate,pvalue=correlation["p.value"] )
+  plist_corr_gene[[i]]=output
+}
+corr_gene=do.call("rbind",plist_corr_gene) %>%arrange(p.value)
+colnames(corr_gene)=paste0(q,"_",colnames(corr_gene))
+qlist[[q]]=corr_gene
+
+ }
+  return(qlist)
+}
+```
+
+```{r}
+Pro_log_data_t=t(Pro_log_data)%>%as.data.frame()
+```
+
+ 
+
+### ECM and EMT were activated in primary&early invasion group
+```{r}
+Int_key_words=c( "EXTRACELLULAR", "MESENCHYMAL","MATRIX","ECM","EMT")
+
+Key_pathway=do.call("rbind", Pathway_select_by_keyword(All_pathway_singscore_p005$pathway,Int_key_words) ) %>%as.data.frame() %>%setNames("Keyword")%>%arrange(Keyword)
+
+# WP pathway
+Key_pathway_anno=All_pathway_singscore_p005 %>%.[.$pathway%in% rownames(Key_pathway) ,] %>%.[,c("pathway","padj","NES")]%>%arrange(NES)%>%dplyr::filter(grepl("KEGG|HALLMARK|REACTOM",pathway))
+knitr::kable(Key_pathway_anno,caption = "Mitochondria energy metabolism")%>%kableExtra::kable_styling(latex_options = c("hold_position","scale_down"))
+```
+
+
+```{r,eval=F}
+Valcano_plot(Protein_ratio_stat,All_pathway_list,"Wiki_Human_Complement_System")
+colnames(All_pathway_list)[grepl("COMPLEMENT|Complement",colnames(All_pathway_list))]
+```
+
+```{r}
+Valcano_plot(Protein_ratio_stat,All_pathway_list,"HALLMARK_EPITHELIAL_MESENCHYMAL_TRANSITION")
+
+```
+
+
+```{r}
+Valcano_plot(Protein_ratio_stat,All_pathway_list,"REACTOME_EXTRACELLULAR_MATRIX_ORGANIZATION")
+
+```
+
+```{r}
+Pathway="HALLMARK_HYPOXIA"
+Valcano_plot(Protein_ratio_stat,All_pathway_list,Pathway)
+#Hypoxis_EGFR=c("EGFR","P4HA1","IGFBP3","TGM2")
+Up_Sig_genes=Significant_genes(Protein_ratio_stat,All_pathway_list,Pathway)%>%dplyr::filter(diffexpressed=="UP")
+
+Corr_data=Correlation_batch(Pro_log_data_t,Up_Sig_genes$gene_symbol)
+
+Corr_data[["GIT2"]]
+Targe_gene_corr_combination=do.call("cbind",Corr_data)%>%.[,grepl("Cor",colnames(.))] %>%apply(.,2,mean)%>%as.data.frame()%>%setNames("Corr") %>%arrange(desc(Corr))
+
+```
+
+
+```{r,eval=F}
+ECM_genes=c("LAMA4","FN1","COL1A2","COL3A1","COL21A1","LAMC1","LAMB1","LAMA5")
+Corr_data=Correlation_batch(Pro_log_data_t,ECM_genes)
+
+Corr_data[["GIT2"]]
+Targe_gene_corr_combination=do.call("cbind",Corr_data)%>%.[,grepl("Cor",colnames(.))] %>%apply(.,2,mean)%>%as.data.frame()%>%setNames("Corr") %>%arrange(desc(Corr))
+
+```
+
+
+### Cell cycle was acitivated in primary&early invasion group
+
+```{r}
+
+Int_key_words=c("PROLIFERATION","CYCLE")
+
+Key_pathway=do.call("rbind", Pathway_select_by_keyword(All_pathway_singscore_p005$pathway,Int_key_words) ) %>%as.data.frame() %>%setNames("Keyword")%>%arrange(Keyword)
+
+# WP pathway
+Key_pathway_anno=All_pathway_singscore_p005 %>%.[.$pathway%in% rownames(Key_pathway) ,] %>%dplyr::filter(!grepl("TCA|CITRATE",pathway)) %>%.[,c("pathway","padj","NES")]%>%arrange(NES)
+#%>%dplyr::filter(grepl("KEGG|HALLMARK|REACTOM|WP",pathway))
+knitr::kable(Key_pathway_anno,caption = "Cell cycle")%>%kableExtra::kable_styling(latex_options = c("hold_position","scale_down"))
+
+```
+
+
+```{r}
+
+Pathway="C2CGP_REACTOME_CELL_CYCLE_MITOTIC"  
+Valcano_plot(Protein_ratio_stat,All_pathway_list,Pathway)
+```
+
+```{r,eval=T}
+Int_key_words=c("PROLIFERATION","CYCLE")
+
+Key_pathway=do.call("rbind", Pathway_select_by_keyword(All_pathway_singscore_p005$pathway,Int_key_words) ) %>%as.data.frame() %>%setNames("Keyword")%>%arrange(Keyword)
+
+
+
+Key_pathway_anno=colnames(All_samples_singscore_umap)  %>%.[grepl("CELL_CYCLE|Cell_Cyle",.)]
+
+Target_path=All_samples_singscore_umap [,c(Key_pathway_anno,"Sample_ID") ]
+GIT2_plut_keypath_data=Primary_Early_Invasion_data %>%t()%>%as.data.frame() %>%mutate(Sample_ID=rownames(.)) %>%. [c("Sample_ID","GIT2")] %>%left_join(.,Target_path)
+plist_corr=list()
+Path_name=colnames(GIT2_plut_keypath_data)[grepl("singscore",colnames(GIT2_plut_keypath_data))]
+
+for (i in Path_name){
+  data1=GIT2_plut_keypath_data$GIT2
+  data2=GIT2_plut_keypath_data[,i]
+  correlation=cor.test(data1,data2)
+  output=data.frame(Cor.coeff=correlation$estimate,pvalue=correlation["p.value"] )
+  plist_corr[[i]]=output
+}
+GIT2_corr_pathway=do.call("rbind",plist_corr) %>%arrange(p.value)
+knitr::kable(GIT2_corr_pathway,caption = "The correlation between GIT2 and pathway") %>%kableExtra::kable_styling(latex_options = c("scale_down"))
+  
+```
+
+```{r}
+Pathway="C2CGP_FISCHER_G2_M_CELL_CYCLE"               
+Valcano_plot(Protein_ratio_stat,All_pathway_list,Pathway)
+
+Key_pathway_anno=All_pathway_singscore %>%dplyr::filter(grepl("G2_M_CELL_CYCLE",pathway))
+```
+
+```{r}
+Pathway="C2CGP_WHITFIELD_CELL_CYCLE_G2_M"       
+Valcano_plot(Protein_ratio_stat,All_pathway_list,Pathway)
+```
+
+```{r}
+Pathway= "C2CGP_FISCHER_G1_S_CELL_CYCLE"  
+Valcano_plot(Protein_ratio_stat,All_pathway_list,Pathway)
+```
+
+
+```{r}
+
+Valcano_plot_pathway_list=function(Data,Pathway_list,pathway_name_list,Combined_path_name){
+  name_list=list()
+  for (i in 1:length(pathway_name_list)){
+    pathway_name=pathway_name_list[i]
+    pathway_genes=Pathway_list%>%.[,grepl(pathway_name,colnames(.))]%>%as.character()
+    name_list[[i]]=pathway_genes
+  }
+  pathway_genes=unlist(name_list) %>%as.character() %>%unique()
+  # return(pathway_genes)
+  library(ggrepel)
+  Data=Data%>%.[.$gene_symbol%in%pathway_genes,]
+  # add a column of NAs
+  de=Data %>%mutate(diffexpressed=ifelse(padj>0.05,"NO",ifelse(log2Foldchange>0,"UP","DOWN")))
+  de$delabel <- NA
+   de$delabel[de$diffexpressed != "NO"] <- de$gene_symbol[de$diffexpressed != "NO"]
+
+# plot adding up all layers we have seen so far
+ ggplot(data=de, aes(x=log2Foldchange, y=-log10(padj), col=diffexpressed, label=delabel)) +
+        geom_point() + ggtitle(Combined_path_name)+
+        theme_minimal() +
+        geom_text_repel() +
+        scale_color_manual(values=c("blue", "black", "red")) +
+        geom_vline(xintercept=c(-0.6, 0.6), col="red") +
+        geom_hline(yintercept=-log10(0.05), col="red")
+  
+  
+  
+  
+}
+
+Pathway_list_combind=function(Pathway_list,pathway_name_list){
+  name_list=list()
+  for (i in 1:length(pathway_name_list)){
+    pathway_name=pathway_name_list[i]
+    pathway_genes=Pathway_list%>%.[,grepl(pathway_name,colnames(.))]%>%as.character()
+    name_list[[i]]=pathway_genes
+  }
+  pathway_genes=unlist(name_list) %>%as.character() %>%unique()
+  
+}
+
+Pathway_list=c("C2CGP_WHITFIELD_CELL_CYCLE_G2_M", "C2CGP_FISCHER_G1_S_CELL_CYCLE","C2CGP_FISCHER_G2_M_CELL_CYCLE")
+
+new_name="G1_S_M_CELL_CYCLE"
+Valcano_plot_pathway_list(Protein_ratio_stat,All_pathway_list,Pathway_list,new_name)
+
+```
+
+
+```{r}
+Pathway_list=c("C2CGP_WHITFIELD_CELL_CYCLE_G2_M", "C2CGP_FISCHER_G1_S_CELL_CYCLE","C2CGP_FISCHER_G2_M_CELL_CYCLE","C2CGP_REACTOME_CELL_CYCLE_MITOTIC")
+
+Pathway_combine_genelist=list("G1_S_M_CELL_CYCLE"= Pathway_list_combind (All_pathway_list,Pathway_list) )
+Valcano_plot_pathway_list(Protein_ratio_stat,All_pathway_list,Pathway_list,new_name)
+```
+
+
+```{r}
+res_q005_rank=Ttest_padj005["log2Foldchange"]%>% arrange(log2Foldchange) %>%as.data.frame() %>%tibble::rownames_to_column()
+ranks <- tibble::deframe(res_q005_rank)
+All_pathway=fgsea::gmtPathways(file.path(Reference_path,"Human_GSEA","msigdb.v7.5.1.symbols.gmt.txt"))
+All_pathway$"G1_S_M_CELL_CYCLE"=c()
+
+ 
+
+fgseaRes <- fgsea::fgseaMultilevel(Pathway_combine_genelist, ranks,
+                             minSize=20,
+                            maxSize=500
+                           )
+
+
+```
+
+```{r}
+Gene_list_up_down=function(Data,gene_list){
+
+
+  Data=Data%>%.[.$gene_symbol%in%gene_list,]
+  # add a column of NAs
+  de=Data %>%mutate(diffexpressed=ifelse(padj>0.05,"NO",ifelse(log2Foldchange>0,"UP","DOWN")))
+  de$delabel <- NA
+  de$delabel[de$diffexpressed != "NO"] <- de$gene_symbol[de$diffexpressed != "NO"]
+  return(de)
+}
+
+
+Pathway_list=c("C2CGP_WHITFIELD_CELL_CYCLE_G2_M", "C2CGP_FISCHER_G1_S_CELL_CYCLE","C2CGP_FISCHER_G2_M_CELL_CYCLE","C2CGP_REACTOME_CELL_CYCLE_MITOTIC")
+
+Cell_cycle_genelist= Pathway_list_combind (All_pathway_list,Pathway_list) 
+Cell_cycle_genelist_express=Gene_list_up_down(Protein_ratio_stat,Cell_cycle_genelist)
+Cell_cycle_genelist_express_up=Cell_cycle_genelist_express%>%dplyr::filter(diffexpressed=="UP")
+```
+
+### Calculate singscore by using upregulated genes in cell cycle gene list
+```{r}
+rankData_st= singscore::rankGenes(Pro_log_data)
+scoredf_st <- singscore::simpleScore(rankData_st, upSet = Cell_cycle_genelist_express_up$gene_symbol)
+
+scoredf_st
+Target_path=scoredf_st%>%mutate(Sample_ID=row.names(.))
+Genelist=Cell_cycle_genelist_express_up$gene_symbol
+plist_corr=list()
+for (i in Cell_cycle_genelist_express_up$gene_symbol){
+ Plus_keypath_data=Primary_Early_Invasion_data %>%t()%>%as.data.frame() %>%mutate(Sample_ID=rownames(.)) %>%. [c("Sample_ID",i)] %>%left_join(.,Target_path)
+
+  data1=Plus_keypath_data[,i]
+  data2=Plus_keypath_data[,3]
+  correlation=cor.test(data1,data2)
+  output=data.frame(Cor.coeff=correlation$estimate,pvalue=correlation["p.value"] )
+  plist_corr[[i]]=output
+}
+
+Cellcycle_corr_pathway=do.call("rbind",  plist_corr) %>%arrange(p.value) %>%mutate(gene_symbol=row.names(.)) %>%left_join(.,Protein_ratio_stat)
+colnames(Cellcycle_corr_pathway)[1:3]=c("Cor_Cell_cycle_singscore.coeff","Cor_Cell_cycle_singscore.pvalue")
+knitr::kable(Cellcycle_corr_pathway,caption = "Correlation between Cell cycle related genes and cell cycle singscore") %>%kableExtra::kable_styling(latex_options = c("hold_position","scale_down") )
+```
+
+```{r}
+knitr::knit_exit()
+```
+
+
+```{r,eval=F}
+
+GIT2_related_path=list()
+for (i in 1:nrow(All_pathway_singscore)){
+  Path=All_pathway_singscore$pathway[i]
+  if( grepl("GIT2", All_pathway_singscore[i]$leadingEdge)){
+    GIT2_related_path[[Path]]=All_pathway_singscore[i]$leadingEdge
+    
+  }
+  
+}
+GIT2_related_path_2=do.call("rbind",GIT2_related_path)
+
+```
+
+
+```{r}
+Pathway= "C2CGP_FISCHER_G1_S_CELL_CYCLE"  
+Valcano_plot(Protein_ratio_stat,All_pathway_list,Pathway)
+
+```
+
+
+
+```{r}
+
+Pathway="C2CGP_WHITFIELD_CELL_CYCLE_G2_M" 
+Valcano_plot(Protein_ratio_stat,All_pathway_list,Pathway)
+
+```
+
+
+
+
+```{r,eval=F}
+Valcano_plot(Protein_ratio_stat,All_pathway_list,"REACTOME_CELL_CYCLE_MITOTIC")
+
+```
+### GIT2 and cell cycle
+
+```{r,eval=T,message=F}
+GIT2_plut_keypath_data=Primary_Early_Invasion_data %>%t()%>%as.data.frame() %>%mutate(Sample_ID=rownames(.)) %>%. [c("Sample_ID","GIT2")] %>%left_join(.,Target_path)
+plist_corr=list()
+Path_name=colnames(GIT2_plut_keypath_data)[grepl("singscore",colnames(GIT2_plut_keypath_data))]
+ 
+for (i in Path_name){
+  data1=GIT2_plut_keypath_data$GIT2
+  data2=GIT2_plut_keypath_data[,i]
+  correlation=cor.test(data1,data2)
+  output=data.frame(Cor.coeff=correlation$estimate,pvalue=correlation["p.value"] )
+  plist_corr[[i]]=output
+}
+GIT2_corr_pathway=do.call("rbind",plist_corr) %>%dplyr::arrange(p.value)
+```
+
+
+```{r,eval=T}
+knitr::kable( GIT2_corr_pathway,caption="GIT2 and cell cycle") %>%kableExtra::kable_styling(latex_options = c("hold_position","scale_down"))
+```
+
+### CSPG4 is correlated with cell cycle
+
+```{r,message=F}
+CSPG4_plut_keypath_data=Primary_Early_Invasion_data %>%t()%>%as.data.frame() %>%mutate(Sample_ID=rownames(.)) %>%. [c("Sample_ID","CSPG4")] %>%left_join(.,Target_path)
+plist_corr=list()
+Path_name=colnames(CSPG4_plut_keypath_data)[grepl("singscore",colnames(CSPG4_plut_keypath_data))]
+ 
+for (i in Path_name){
+  data1=CSPG4_plut_keypath_data$CSPG4
+  data2=CSPG4_plut_keypath_data[,i]
+  correlation=cor.test(data1,data2)
+  output=data.frame(Cor.coeff=correlation$estimate,pvalue=correlation["p.value"] )
+  plist_corr[[i]]=output
+}
+CSPG4_corr_pathway=do.call("rbind",plist_corr) %>%arrange(p.value)
+```
+
+
+```{r,message=F}
+knitr::kable( CSPG4_corr_pathway,caption="CSPG4 and cell cycle") %>%kableExtra::kable_styling(latex_options = c("hold_position","scale_down"))
+
+
+```
+
+### LAMC1 is correlaed with EMT and ECM
+```{r,message=F}
+LAMC1_plut_keypath_data=Primary_Early_Invasion_data %>%t()%>%as.data.frame() %>%mutate(Sample_ID=rownames(.)) %>%. [c("Sample_ID","LAMC1")] %>%left_join(.,Target_path)
+plist_corr=list()
+Path_name=colnames(LAMC1_plut_keypath_data)[grepl("singscore",colnames(LAMC1_plut_keypath_data))]
+ 
+for (i in Path_name){
+  data1=LAMC1_plut_keypath_data$LAMC1
+  data2=LAMC1_plut_keypath_data[,i]
+  correlation=cor.test(data1,data2)
+  output=data.frame(Cor.coeff=correlation$estimate,pvalue=correlation["p.value"] )
+  plist_corr[[i]]=output
+}
+LAMC1_corr_pathway=do.call("rbind",plist_corr) %>%arrange(p.value)
+```
+
+
+```{r,message=F}
+knitr::kable(LAMC1_corr_pathway,caption="LAMC1 and cell cycle") %>%kableExtra::kable_styling(latex_options = c("hold_position","scale_down"))
+
+
+```
+
+### LMNA is correlaed with EMT and ECM
+```{r}
+LMNA_plut_keypath_data=Primary_Early_Invasion_data %>%t()%>%as.data.frame() %>%mutate(Sample_ID=rownames(.)) %>%. [c("Sample_ID","LMNA")] %>%left_join(.,Target_path)
+plist_corr=list()
+Path_name=colnames(LMNA_plut_keypath_data)[grepl("singscore",colnames(LMNA_plut_keypath_data))]
+ 
+for (i in Path_name){
+  data1=LMNA_plut_keypath_data$LMNA
+  data2=LMNA_plut_keypath_data[,i]
+  correlation=cor.test(data1,data2)
+  output=data.frame(Cor.coeff=correlation$estimate,pvalue=correlation["p.value"] )
+  plist_corr[[i]]=output
+}
+LMNA_corr_pathway=do.call("rbind",plist_corr) %>%arrange(p.value)
+knitr::kable(LMNA_corr_pathway,caption="LMNA and cell cycle") %>%kableExtra::kable_styling(latex_options = c("hold_position","scale_down"))
+
+
+```
+
+```{r}
+knitr::knit_exit()
+```
+
+
+### MYC pathway was activated in primary&early group (target genes: LDHA SRSF3 HNRNPA2B1  bax bcl2 mcl1 p27 p15 CDK4 E2F1 CDC25A CAD ODC1 )
+```{r}
+
+
+Int_key_words=c("MTOR","MAPK","MYC","TP53","P53","CCRCC","MTORC1","TOR","mTOR")
+Int_key_words=c("MTOR","MAPK","MYC","TP53","P53","CCRCC","MTORC1","TOR","mTOR")
+
+Key_pathway=do.call("rbind", Pathway_select_by_keyword(All_pathway_singscore_p005$pathway,Int_key_words) ) %>%as.data.frame() %>%setNames("Keyword")%>%arrange(Keyword)
+
+# WP pathway
+Key_pathway_anno=All_pathway_singscore_p005 %>%.[.$pathway%in% rownames(Key_pathway) ,] %>%.[,c("pathway","padj","NES")]%>%arrange(NES)
+#%>%dplyr::filter(grepl("KEGG|HALLMARK|REACTOM|WP",pathway))
+knitr::kable(Key_pathway_anno,caption = "Mitochondria energy metabolism")%>%kableExtra::kable_styling(latex_options = c("hold_position","scale_down"))
+
+```
+
+```{r}
+Valcano_plot(Protein_ratio_stat,All_pathway_list,"HALLMARK_MYC_TARGETS_V1")
+
+```
+## Correlation between GIT2 and pathways
+```{r}
+Target_path=All_samples_singscore_umap [,c("Sample_ID","Wiki_Glycolysis_and_Gluconeogenesis_singscore","C2CGP_KEGG_CITRATE_CYCLE_TCA_CYCLE_singscore", "Wiki_TCA_Cycle_aka_Krebs_or_citric_acid_cycle_singscore" ,"C2CGP_REACTOME_CELL_CYCLE_CHECKPOINTS_singscore","Wiki_Cell_Cycle_singscore"  ,"Wiki_Mitochondrial_LC_Fatty_Acid_Beta_Oxidation_singscore","Wiki_Complement_Activation_singscore","Wiki_Oxidative_phosphorylation_singscore","HALLMARK_EPITHELIAL_MESENCHYMAL_TRANSITION_singscore","C2CGP_KEGG_ECM_RECEPTOR_INTERACTION_singscore","HALLMARK_HYPOXIA_singscore","HALLMARK_MYC_TARGETS_V1_singscore")]%>%subset(Sample_ID %in% Primary_Early_Invasion$Sample_ID)
+
+
+GIT2_plut_keypath_data=Primary_Early_Invasion_data %>%t()%>%as.data.frame() %>%mutate(Sample_ID=rownames(.)) %>%. [c("Sample_ID","GIT2")] %>%left_join(.,Target_path)
+plist_corr=list()
+Path_name=colnames(GIT2_plut_keypath_data)[grepl("singscore",colnames(GIT2_plut_keypath_data))]
+ 
+for (i in Path_name){
+  data1=GIT2_plut_keypath_data$GIT2
+  data2=GIT2_plut_keypath_data[,i]
+  correlation=cor.test(data1,data2)
+  output=data.frame(Cor.coeff=correlation$estimate,pvalue=correlation["p.value"] )
+  plist_corr[[i]]=output
+}
+GIT2_corr_pathway=do.call("rbind",plist_corr) %>%arrange(p.value)
+GIT2_corr_pathway
+```
+## Top proteins
+```{r}
+Top_proteins=Protein_ratio_stat %>%dplyr::filter(log2Foldchange>0.8,padj<0.01)%>%arrange(padj,log2Foldchange)
+
+```
+# GIT2 KO proteinoimcs
+
+```{r}
+list.files(Raw_data_path)
+GIT2_KD=readxl::read_excel(file.path(Raw_data_path, "GIT2 KD proteomics.xlsx"),sheet=1)
+keytypes(org.Hs.eg.db:: org.Hs.eg.db)
+GIT2_KD_gene=sapply(GIT2_KD$Description,function(x) output= unlist(strsplit(x ," "))[grepl("GN=", unlist(strsplit(x ," ")))] )%>%as.character()
+GIT2_KD2=GIT2_KD%>%mutate(SYMBOL=gsub("GN=","",GIT2_KD_gene))%>%dplyr::filter(!grepl("\\(",SYMBOL) )
+colnames(GIT2_KD2)=gsub("-","_",colnames(GIT2_KD2))
+GIT2_KD2_both_up=GIT2_KD2%>%dplyr::filter(average_sh1>1 & average_sh3>1 & p_sh3<0.05 & p_sh1<0.05 )
+GIT2_KD2_both_dn=GIT2_KD2%>%dplyr::filter(average_sh1<1 & average_sh3<1 & p_sh3<0.05 & p_sh1<0.05 )
+GIT2_KD2_both_p005=rbind(GIT2_KD2_both_up,GIT2_KD2_both_dn)
+
+ 
+
+
+GIT2_sh1_both_p005=GIT2_KD2_both_p005%>%.[,grepl("sh1",colnames(.))]%>%mutate(Accession=GIT2_KD2_both_p005$Accession,Symbol=GIT2_KD2_both_p005$SYMBOL)%>%mutate(log2Foldchange=log2(average_sh1))
+ 
+GIT2_sh3_both_p005=GIT2_KD2_both_p005%>%.[,grepl("sh3",colnames(.))]%>%mutate(Accession=GIT2_KD2_both_p005$Accession,Symbol=GIT2_KD2_both_p005$SYMBOL)%>%mutate(log2Foldchange=log2(average_sh3))
+
+
+GIT2_sh1=GIT2_KD2%>%.[,grepl("sh1",colnames(.))]%>%mutate(Accession=GIT2_KD2$Accession,Symbol=GIT2_KD2$SYMBOL)%>%mutate(log2Foldchange=log2(average_sh1))
+ GIT2_sh1_ACTB=GIT2_sh1%>%dplyr::filter(Symbol=="ACTB")
+
+GIT2_sh3=GIT2_KD2%>%.[,grepl("sh3",colnames(.))]%>%mutate(Accession=GIT2_KD2$Accession,Symbol=GIT2_KD2$SYMBOL)%>%mutate(log2Foldchange=log2(average_sh3))
+ GIT2_sh3_ACTB=GIT2_sh3%>%dplyr::filter(Symbol=="ACTB")
+
+```
+
+```{r}
+res_q005_rank=GIT2_sh3%>% dplyr::filter(p_sh3<0.05) %>% .[,c("Symbol","log2Foldchange")]%>%group_by(Symbol) %>%summarise(Mean=mean(log2Foldchange))%>%
+  arrange(Mean) %>%as.data.frame()  %>%.[,c("Symbol","Mean")]
+ranks <- tibble::deframe(res_q005_rank)
+All_pathway=fgsea::gmtPathways(file.path(Reference_path,"Human_GSEA","msigdb.v7.5.1.symbols.gmt.txt"))
+
+fgsea_list=list()
+for (i in GMT_files){
+ name=gsub(".*/","",i)
+ name2=gsub("all.v7.5.1.symbols.gmt.txt","",name)
+ pathway= fgsea::gmtPathways(i)
+ fgseaRes <- fgsea::fgseaMultilevel(pathway, ranks,
+                           minSize=3,
+                           maxSize=500
+                           )
+ fgsea_list[[name2]]=fgseaRes
+
+}
+GIT2_sh1_All_pathway_singscore=do.call("rbind",fgsea_list)
+GIT2_sh1_All_pathway_singscore_p005=GIT2_sh1_All_pathway_singscore%>%dplyr::filter(padj<0.05)
+Int_key_words=c( "FATTY", "OXIDATIVE","PHOSPHORYLATION","GLYCOLYSIS","TCA","LONG","COMPLEMENT")
+Key_pathway=do.call("rbind", Pathway_select_by_keyword(GIT2_sh1_All_pathway_singscore_p005$pathway,Int_key_words) ) %>%as.data.frame() %>%setNames("Keyword") %>%
+       mutate(Keyword=gsub("TP53","P53" ,Keyword)) %>%arrange(Keyword)
+
+Key_pathway_anno=GIT2_sh1_All_pathway_singscore_p005%>%dplyr::filter(grepl("WP",pathway ))%>%arrange(NES)
+
+```
+
+
+```{r}
+Sh1_Protein_ratio_stat=GIT2_sh1%>% mutate(gene_symbol=Symbol,padj=p_sh1)
+ 
+Pathway="Wiki_Mitochondrial_LC_Fatty_Acid_Beta_Oxidation"
+colnames(All_pathway_list)[grepl( "Fatty",colnames(All_pathway_list))]
+Valcano_plot(Sh1_Protein_ratio_stat,All_pathway_list,Pathway)
+ 
+```
+
+```{r}
+Valcano_plot(Sh1_Protein_ratio_stat,All_pathway_list,"REACTOME_CELL_CYCLE_MITOTIC")
+
+```
+ 
+```{r}
+Pathway="Wiki_Mitochondrial_LC_Fatty_Acid_Beta_Oxidation"
+colnames(All_pathway_list)[grepl( "Fatty",colnames(All_pathway_list))]
+Valcano_plot(Protein_ratio_stat,All_pathway_list,Pathway)
+Valcano_plot(Invasion_Protein_ratio_stat,All_pathway_list,Pathway)
+```
+
+```{r}
+res_q005_rank=GIT2_sh1_both_p005[c("Symbol","log2Foldchange")]%>%group_by(Symbol) %>%summarise(Mean=mean(log2Foldchange))%>%
+  arrange(Mean) %>%as.data.frame()  %>%.[,c("Symbol","Mean")]
+ranks <- tibble::deframe(res_q005_rank)
+All_pathway=fgsea::gmtPathways(file.path(Reference_path,"Human_GSEA","msigdb.v7.5.1.symbols.gmt.txt"))
+fgseaRes <- fgsea::fgseaMultilevel(All_pathway, ranks,
+                           minSize=20,
+                           maxSize=500
+                           )
+
+ fgsea_list=list()
+for (i in GMT_files){
+ name=gsub(".*/","",i)
+ name2=gsub("all.v7.5.1.symbols.gmt.txt","",name)
+ pathway= fgsea::gmtPathways(i)
+ fgseaRes <- fgsea::fgseaMultilevel(pathway, ranks,
+                           minSize=3,
+                           maxSize=500
+                           )
+ fgsea_list[[name2]]=fgseaRes
+
+}
+
+GIT2_sh1_All_pathway_singscore=do.call("rbind",fgsea_list)
+GIT2_sh1_All_pathway_singscore_p005=GIT2_sh1_All_pathway_singscore%>%dplyr::filter(padj<0.05)
+Int_key_words=c( "FATTY", "OXIDATIVE","PHOSPHORYLATION","GLYCOLYSIS","TCA","LONG","COMPLEMENT")
+Key_pathway=do.call("rbind", Pathway_select_by_keyword(GIT2_sh1_All_pathway_singscore_p005$pathway,Int_key_words) ) %>%as.data.frame() %>%setNames("Keyword") %>%
+       mutate(Keyword=gsub("TP53","P53" ,Keyword)) %>%arrange(Keyword)
+
+```
+
+```{r}
+Key_pathway_anno=GIT2_sh1_All_pathway_singscore_p005%>%dplyr::filter(grepl("FATTY",pathway ))%>%arrange(NES)
+```
+
+
+```{r}
+# WP pathway
+
+WP_Key_pathway_anno=GIT2_sh1_All_pathway_singscore_p005%>%.[.$pathway%in% rownames(Key_pathway) ,] %>%.[,c("pathway","padj","NES")]%>%dplyr::filter(grepl("WP",pathway ))%>%arrange(NES)
+
+WP_Key_pathway_anno=GIT2_sh1_All_pathway_singscore %>%.[,c("pathway","padj","NES")]%>%dplyr::filter(grepl("WP",pathway ))%>%arrange(NES)
+knitr::kable(WP_Key_pathway_anno,caption = "Mitochondria energy metabolism")%>%kableExtra::kable_styling(latex_options = c("hold_position","scale_down"))
+
+
+```
+
+
+```{r}
+Hallmark=fgseaRes %>%dplyr::filter(grepl("HALLMARK",pathway )) %>%  arrange(padj)
+Hallmark_q005=Hallmark%>%dplyr::filter(padj<0.05)%>% arrange(desc(NES))
+Hallmark_EMT=Hallmark%>%dplyr::filter(pathway=="HALLMARK_EPITHELIAL_MESENCHYMAL_TRANSITION")
+
+knitr::kable(Hallmark_q005[,c(1,2,3,6)],caption = "Hallmark pathways changed in shUBR5 groups (vs contral,padj<0.05)") %>%kableExtra::kable_styling(latex_options = c("hold_position"))
+```
+
+
+```{r}
+fgsea_list=list()
+for (i in GMT_files){
+ name=gsub(".*/","",i)
+ name2=gsub("all.v7.5.1.symbols.gmt.txt","",name)
+ pathway= fgsea::gmtPathways(i)
+ fgseaRes <- fgsea::fgseaMultilevel(pathway, ranks,
+                           minSize=3,
+                           maxSize=500
+                           )
+ fgsea_list[[name2]]=fgseaRes
+
+}
+
+
+```
+
+# Invasion group
+```{r}
+Invasion=All_samples_singscore_umap%>%dplyr::filter(Subtype_3=="T1&T2_Invasion_type2"|Subtype_3=="T1&T2_Invasion_type1")
+
+
+Invasion_data=Pro_log_data %>%.[,colnames(.) %in% Invasion$Sample_ID]
+
+Invasion_Ttest=t(Invasion_data)%>%as.data.frame() %>%apply(2,function (x) (t.test(x))$p.value )%>%unlist()%>%as.data.frame()%>%setNames("pvalue")%>%mutate(padj=p.adjust(pvalue))
+Invasion_Mean_log=t(Invasion_data)%>%as.data.frame()%>%apply(2,function (x) mean(x))
+Invasion_Ttest_padj005=Invasion_Ttest %>% mutate(Mean_log=Mean_log) %>%dplyr::filter(padj<0.05)
+Invasion_Protein_ratio_stat=Invasion_Ttest%>% mutate(log2Foldchange=Mean_log)%>%mutate(gene_symbol=rownames(.))
+
+```
+
+ 
+```{r}
+Pathway="Wiki_Mitochondrial_LC_Fatty_Acid_Beta_Oxidation"
+colnames(All_pathway_list)[grepl( "Fatty",colnames(All_pathway_list))]
+Valcano_plot(Protein_ratio_stat,All_pathway_list,Pathway)
+Valcano_plot(Invasion_Protein_ratio_stat,All_pathway_list,Pathway)
+
+```
+ 
+ 
+ 
+```{r}
+Pathway="Wiki_Glycolysis_and_Gluconeogenesis"
+colnames(All_pathway_list)[grepl( "Glycolysis",colnames(All_pathway_list))]
+Valcano_plot(Protein_ratio_stat,All_pathway_list,Pathway)
+
+Valcano_plot(Invasion_Protein_ratio_stat,All_pathway_list,Pathway)
+
+```
+
+```{r}
+Valcano_plot(Invasion_Protein_ratio_stat,All_pathway_list,"HALLMARK_MYC_TARGETS_V1")
+
+```
+
+```{r}
+Valcano_plot(Invasion_Protein_ratio_stat,All_pathway_list,"HALLMARK_HYPOXIA")
+```
+
+
+```{r}
+Valcano_plot(Protein_ratio_stat,All_pathway_list,"HALLMARK_EPITHELIAL_MESENCHYMAL_TRANSITION")
+
+```
+
+
+```{r}
+Valcano_plot(Protein_ratio_stat,All_pathway_list,"REACTOME_EXTRACELLULAR_MATRIX_ORGANIZATION")
+
+```
+
+
+```{r}
+Invasion_res_q005_rank=Invasion_Ttest_padj005["Mean_log"]%>% arrange(Mean_log) %>%as.data.frame() %>%tibble::rownames_to_column()
+Invasion_ranks <- tibble::deframe(Invasion_res_q005_rank)
+
+Invasion_fgsea_list=list()
+for (i in GMT_files){
+ name=gsub(".*/","",i)
+ name2=gsub("all.v7.5.1.symbols.gmt.txt","",name)
+ pathway= fgsea::gmtPathways(i)
+ fgseaRes <- fgsea::fgseaMultilevel(pathway, ranks,
+                           minSize=3,
+                           maxSize=500
+                           )
+ Invasion_fgsea_list[[name2]]=fgseaRes
+
+}
+
+Invasion_All_pathway_singscore=do.call("rbind",Invasion_fgsea_list)
+Invasion_All_pathway_singscore_p005=Invasion_All_pathway_singscore%>%dplyr::filter(padj<0.05)
+
+
+Invasion_Pathway_keyword_pattern=stringr::str_split(Invasion_All_pathway_singscore_p005$pathway,pattern="_")%>%unlist()
+
+Invasion_key_words_enrichment=Pathway_enrichment_analysis(Invasion_All_pathway_singscore_p005$pathway,6)
+
+
+Int_key_words=c("MTOR","MAPK","MYC","TP53","P53","CCRCC","MTORC1","TOR","mTOR")
+Int_key_words=c("MTOR","MTORC1","TOR","mTOR")
+
+Key_pathway=do.call("rbind", Pathway_select_by_keyword(Invasion_All_pathway_singscore_p005$pathway,Int_key_words) ) %>%as.data.frame() %>%setNames("Keyword")%>%arrange(Keyword)
+
+# WP pathway
+Key_pathway_anno=Invasion_All_pathway_singscore %>%.[.$pathway%in% rownames(Key_pathway) ,] %>%.[,c("pathway","padj","NES")]%>%arrange(NES)
+#%>%dplyr::filter(grepl("KEGG|HALLMARK|REACTOM|WP",pathway))
+knitr::kable(Key_pathway_anno,caption = "Mitochondria energy metabolism")%>%kableExtra::kable_styling(latex_options = c("hold_position","scale_down"))
+
+
+```
+
+## visualization
+
+```{r}
+
+```
+
+
+
+```{r,include=F}
+matrix.please<-function(x) {
+  m<-as.matrix(x[,-1])
+  rownames(m)<-x[,1]
+  m
+}
+
+PCA_Plot_2<- function (data,Annotation) {
+  # logcountdata row:genes,column: samples
+  pca <- prcomp(data) 
+  pca_out<-as.data.frame(pca$x)
+  # return(pca_out)
+  df_out<- merge (pca_out,Annotation,by.x=0,by.y=0) 
+ 
+  # label_color<- factor(df_out[,group])
+  ggplot(df_out,aes(x=PC1,y=PC2)) +geom_point(aes(colour = Subclass))+
+    ggtitle("subclass")
+  
+}
+
+Wilcox_test_singscore<- function (Data,Group1_ID,Group2_ID) {
+  plist=list()
+  plist2=list()
+  for (Gene in rownames(Data)) {
+  Data_select=Data[rownames(Data)==Gene,]
+  #return(Data_select)
+  a=as.numeric(Data_select[names(Data_select) %in% Group1_ID])
+  b=as.numeric(Data_select[names(Data_select) %in% Group2_ID])
+  #return(list(a,b))
+  Test=wilcox.test(b,a, correct=FALSE)
+  pvalue=Test[3]$p.value
+  plist[[Gene]]=pvalue
+  plist2[[Gene]]=mean(b)/mean(a)
+  }
+  test=plist%>%as.data.frame%>%t()%>%as.data.frame()%>%setNames(c("pvalue")) %>%
+                            mutate (padj=p.adjust(.$pvalue, method = "fdr"))
+  test2=plist2%>%as.data.frame%>%t()%>%as.data.frame()%>%setNames(c("FoldChange"))
+  output=cbind(test,test2)%>%tibble::rownames_to_column(.,var="SYMBOL")
+}
+
+Kruskal_singscore<- function (Data,Group_list) {
+  plist=list()
+
+  for (Gene in rownames(Data)) {
+  Data_select=Data[rownames(Data)==Gene,]  %>%as.data.frame()%>%tibble::rownames_to_column(.,var="Sample_ID")%>%left_join(.,Group_list)%>%
+  setNames(c("Sample_ID","Gene","Group"))
+  #return(Data_select)
+ #return(Data_select)
+  Test=kruskal.test(Gene~Group, data=Data_select)
+  pvalue=Test[3]$p.value
+  plist[[Gene]]=pvalue
+  
+  }
+  test=plist%>%as.data.frame%>%t()%>%as.data.frame()%>%setNames(c("pvalue")) %>%
+                            mutate (padj=p.adjust(.$pvalue, method = "fdr"))
+
+  output=test%>%tibble::rownames_to_column(.,var="SYMBOL")
+}
+
+Wilcox_test_singscore_fc<- function (Data,Group1_ID,Group2_ID) {
+  plist=list()
+  plist2=list()
+  for (Gene in rownames(Data)) {
+  Data_select=Data[rownames(Data)==Gene,]
+  #return(Data_select)
+  a=as.numeric(Data_select[names(Data_select) %in% Group1_ID])
+  b=as.numeric(Data_select[names(Data_select) %in% Group2_ID])
+  #return(list(a,b))
+  Test=wilcox.test(b,a, correct=FALSE)
+  pvalue=Test[3]$p.value
+  plist[[Gene]]=pvalue
+  plist2[[Gene]]=mean(b)-mean(a)
+  }
+  test=plist%>%as.data.frame%>%t()%>%as.data.frame()%>%setNames(c("pvalue")) %>%
+                            mutate (padj=p.adjust(.$pvalue, method = "fdr"))
+  test2=plist2%>%as.data.frame%>%t()%>%as.data.frame()%>%setNames(c("FoldChange"))
+  output=cbind(test,test2)%>%tibble::rownames_to_column(.,var="SYMBOL")
+}
+
+
+Clin_gene_cor<- function (clin_Data,clin_select,Expression_data,Gene) {
+  Data_select=Expression_data[rownames(Expression_data)==Gene,] %>% t()
+  Combine=merge ( Data_select,clin_Data,by.x=0,by.y="Sample_ID")
+  #return(Combine)
+ cor.test(Combine[,clin_select],Combine[,Gene])
+  
+}
+
+
+Clin_gene_cor<- function (clin_Data,clin_select,Expression_data,Gene) {
+  Data_select=Expression_data[rownames(Expression_data)==Gene,] %>% t()
+  Combine=merge ( Data_select,clin_Data,by.x=0,by.y="Sample_ID")
+  #return(Combine)
+ cor.test(Combine[,clin_select],Combine[,Gene])
+  
+}
+
+
+
+
+Bar_plot=function(data,pathway_name) {
+  my_comparisons <- list(  c("CHKIRC_Invasion", "CHKIRC_Early_invasion"), c("CHKIRC_Early_invasion", "CHKIRC_Primary"),c("CHKIRC_Primary","CHKIRC_Invasion") )
+ ggplot(
+  data,
+   aes_string(
+    x ="Cluster_Subtype",
+    y = pathway_name,
+    fill="Cluster_Subtype"
+    )
+ )+  geom_violin( ) +geom_boxplot(width=0.1) + theme_minimal()+ggpubr::stat_compare_means(comparisons =  my_comparisons)
+}
+
+singcore_GSEA=function (data,genelist, is.na=T) {
+  nm=names(genelist)
+  plist=list()
+  Data_prepare=singscore::rankGenes (data)
+  for (i in seq_along(genelist)) { 
+    scoredf<- singscore::simpleScore (Data_prepare, upSet=unique(genelist[,i]))%>%.[1]
+    colnames(scoredf)=paste0(nm[i],"_singscore")
+    plist[[i]]=scoredf
+  }
+  return(plist)
+  #output=do.call("cbind",plist)
+}
+
+Singscore_list_combine=function(list_data, sample_n ) {
+  basic=list_data[[1]]
+  for (i in 2: length(list_data)){
+   data=list_data[[i]]
+   if(nrow(data)==sample_n){
+    basic=cbind(basic,data)
+   }
+  }
+  return(basic)
+}  
+
+
+```
+
+# CHKRIC 
+
+```{r}
+## Running enviroment setting
+Cohort="CHKIRC"
+Rawdata_path= file.path (Path,"Raw_data",Cohort)
+Rcode_path=  file.path (Path,"Rcode")
+Rdata_path=file.path (Path,"Rdata")
+Data_out_path=file.path (Path,"Output")
+#source('C:/R/project/4_CCRCC_Proteomics/Rcode/2_CCRCC_PLUS_CPTA_support.R')
+
+#source (file.path(Public_funciton_path, "Rpathvisio_2.R"))
+#source (file.path(Public_funciton_path, "GSEA_all_pathway.R")) # pahtway list: GSEA C2P +Hallmark; #
+#source (file.path(Public_funciton_path, "DESEQ2_pipline.R")) # pahtway list: GSEA C2P +Hallmark; 
+#source (file.path(Public_funciton_path, "Wikipathway.R"))
+library(dplyr)
+library(ggplot2)
+```
+CCRCC subtypes based on functional cluster for CHKIRC and CPTAC Proteomic data (not used in version 3)
+
+** Proteomics data:  Rawdata/Proteomics/54_Proteomics_T&N_ratio.txt"
+** Proteomics data singscore: Rawdata_path/Proteomics/54_Proteomics_singscore.txt
+** Proteomics data, Invasion vs Noninvasion, Pathway singscore,Rawdata_path,/Proteomics/Invasion_vs_Non_Pathway_singscore_p0.05.txt
+
+** Primary&T_early_invasion,22cases: Rawdata_path/"Proteomics","Primary&early_22_samples_UMAP_kmeans.txt"
+              
+** Clincal_data: Rawdata/Clinc/54_Clinical_data.txt need to replace missing data
+** RNAseq: rawcounts data Rawdata/RNAseq/31_RNAseq_raw_reads_matrix.xls
+           Ratio data: Rawdata/RNAseq/AmpliSeq.matrix.rpm.ratio.all.replace_na.del_all_na..imputation.txt
+
+```{r, eval=T}
+## Protoemics_data
+# load(file.path(Path,"Raw_data.rdata"))
+# 
+# colnames(Pro_data)=gsub("_\\d+","",colnames(Pro_data))
+# write.table(Pro_data,file.path(Rawdata_path,"Proteomics","54_Proteomics_T&N_ratio.txt"),sep="\t",quote = F)
+# 
+# Clinical_data=readxl::read_excel(file.path(Rawdata_path,"Clinic", "2021_54_cases_clinical_data.xlsx"),sheet=1)%>%select(-Suregery_time) %>%
+#     select(-cm3) %>%select(-Fuhrman) %>%rename(Capsular_invasion=Capsular_invation,"Tumor_size(cm)"=diameter,"Tumor_purity(%)"=Tumor_per) %>%
+#        mutate(Capsular_invasion=ifelse(Capsular_invasion=="touch","Y","N"))
+# Clinical_data$Sample_ID=gsub("_\\d+","",Clinical_data$Sample_ID)
+# 
+# Other_clinic= readxl::read_excel(file.path(Rawdata_path,"Clinic", "CCRCC_clincal_For_SSGIN.xlsx"),sheet=2) %>% select(-SEX) %>% select(-Tumor_vol) %>%select(-Tumor_size)  %>% rename(sub=Case_ID)
+# 
+# Clinical_data2=Clinical_data%>%left_join(Other_clinic)
+# 
+# write.table(Clinical_data2,file.path(Rawdata_path,"Clinic","54_Clinical_data.txt"),sep="\t",quote = F,row.names = F)
+# 
+# RNAseq_reads_data=readxl::read_excel(file.path(Rawdata_path,"RNAseq","31_RNAseq_raw_reads_matrix.xls"),sheet = 1)
+# Pro_singscore=Merge_two_proteomics_norm_Pathway_singscore %>%.[grepl("RCCN",rownames(.)),]
+# Pro_singscore_scale=Merge_two_proteomics_norm_Pathway_singscore %>%.[grepl("RCCN",rownames(.)),]%>%scale()
+# write.table(Pro_singscore,file.path(Rawdata_path,"Proteomics","54_Proteomics_singscore.txt"),sep="\t")
+# write.table(Pro_singscore_scale,file.path(Rawdata_path,"Proteomics","54_Proteomics_singscore_scale.txt"),sep="\t")
+
+# import singscore data
+# Pro_singscore=read.table(file.path(Rawdata_path,"Proteomics","54_Proteomics_singscore.txt"),sep="\t")
+# colnames(Pro_singscore)=gsub("C2CGP","C2CPG",colnames(Pro_singscore))
+# Pro_singscore_scale=read.table(file.path(Rawdata_path,"Proteomics","54_Proteomics_singscore_scale.txt"),sep="\t")
+
+# write.table(clinical_54_data_2,file=file.path(Rawdata_path,"Clinic","54_Clinical_data.txt"),sep="\t")
+```
+
+**  Use log(T/N) data for singscore calculation
+```{r, eval=T}
+
+# #pro_data: log CHKIRC data; CPTAC_data: Ratio data
+# Pro_log_data=read.table(file.path(Rawdata_path,"Proteomics","54_Proteomics_T&N_ratio.txt"),fill=T)
+# CHKIRC_Pro_data_normalization =  apply(Pro_log_data,2,function(x) output=2^(x-x["ACTB"]) ) %>%t() %>%as.data.frame()
+# 
+# CPTAC_proteomics_path="/home/yang/tools/R/Project/4_CCRCC_Proteomics/Raw_data/CPTAC/Proteomics"
+# 
+# CPTAC_proteomics_ratio=read.table(file.path(CPTAC_proteomics_path,"CPTAC3_CCRCC.tumor2normal.txt"),fill=T,header = T,check.names = F) %>% .[4:9967,]%>%matrix.please()%>%as.data.frame()
+# 
+# 
+# CPTAC_prot_data_normalization=apply(CPTAC_proteomics_ratio,2,function(x) output=x/x["ACTB"])%>%t()%>%as.data.frame()
+# Common_protein=intersect(colnames(CHKIRC_Pro_data_normalization),colnames(CPTAC_prot_data_normalization)) %>%.[!grepl("ACTB",.)]
+# 
+# 
+# CHKIRC_CPTAC_prot_ratio_norm=rbind(CHKIRC_Pro_data_normalization[,Common_protein],CPTAC_prot_data_normalization[,Common_protein])%>%t() %>% na.omit()  %>% t() %>%as.data.frame()
+# 
+# 
+# CHKIRC_CPTAC_prot_ratio_norm_log= CHKIRC_CPTAC_prot_ratio_norm %>% log2() 
+# CHKIRC_CPTAC_prot_ratio_norm_log_scale=scale(CHKIRC_CPTAC_prot_ratio_norm_log )
+# #%>%tibble::rownames_to_column(.,var="Sample_ID")%>%mutate(Sample_ID=gsub("_\\d+","",Sample_ID))
+# #CHKIRC log ,CPTAC:ratio
+# which(apply(CHKIRC_CPTAC_prot_ratio_norm_log_scale, 2, var)==0)
+# 
+# 
+# km.res <- kmeans(CHKIRC_CPTAC_prot_ratio_norm_log_scale, 4, nstart = 20)
+# factoextra::fviz_cluster(km.res, CHKIRC_CPTAC_prot_ratio_norm_log,ellipse.type = "norm")
+# df_clinical=as.data.frame(km.res$cluster)%>% tibble::rownames_to_column(var="Sample_ID") %>% left_join(.,clinical_54_data_2)
+# colnames(df_clinical)[2]="Cluster"
+# 
+# 
+# 
+# 
+# CHKIRC_CPTAC_singscore_list=singcore_GSEA(t(CHKIRC_CPTAC_prot_ratio_norm_log), All_pathway_list)
+# length(CHKIRC_CPTAC_singscore_list)
+# 
+# Merge_two_cohorts_singscore=Singscore_list_combine(CHKIRC_CPTAC_singscore_list,138)
+#write.table(Merge_two_cohorts_singscore,file.path(Rawdata_path, "CHKIRC_CPTAC_138_All_pathways_singscore.txt"))
+#write.table(CHKIRC_CPTAC_prot_ratio_norm_log,file.path(Rawdata_path, "CHKIRC_CPTAC_138_T_N_ratio_ACTB_norm_log.txt"))
+```
+
+** load data
+```{r, eval=T}
+Merge_two_cohorts_singscore=read.table(file.path(Rawdata_path, "CHKIRC_CPTAC_138_All_pathways_singscore.txt"))
+CHKIRC_CPTAC_prot_ratio_norm_log=read.table(file.path(Rawdata_path, "CHKIRC_CPTAC_138_T_N_ratio_ACTB_norm_log.txt"))
+clinical_54_data_2=read.table(file.path(Rawdata_path,"Clinic","54_Clinical_data.txt"),header = T,check.names = F)
+
+```
+
+
+```{r}
+
+#PCAPLOT=PCA_Plot_2(t(Data_select),clinical_54_data_2)
+#PCAPLOT
+```
+
+## CHKIRC cohort Using kmeans to cluster Proteomics singscore data (top 2000 pathways with high variance) 
+
+```{r,include=F,eval=F}
+# do not run this part
+set.seed(1234)
+Pro_singscore_Var=apply(Pro_singscore,2,var) %>%as.data.frame() %>%setNames("Var")
+Pro_singscore_Var_2000=Pro_singscore_Var %>%arrange(desc(Var),.keep_all=T) %>% as.data.frame()%>%dplyr::slice(c(1:2000))
+Data_select=Pro_singscore %>% .[,colnames(.) %in% rownames(Pro_singscore_Var_2000)]
+set.seed(1234)
+df=Data_select
+km.res <- kmeans(df, 3, nstart = 25)
+Cluster_mean=aggregate(Pro_singscore, by=list(cluster=km.res$cluster), mean)
+factoextra::fviz_cluster(km.res, df, eom = c("point"),ellipse.type = "convex")
+df_clinical=as.data.frame(km.res$cluster)%>% tibble::rownames_to_column(var="Sample_ID") %>% left_join(.,clinical_54_data_2)
+colnames(df_clinical)[2]="Cluster"
+
+data=df_clinical[,c("Cluster","Capsular_invasion")] %>% group_by(Cluster,Capsular_invasion) %>% summarise(n=n())
+df_cumsum <- plyr::ddply(data, "Cluster",
+                   transform, label_ypos=cumsum(n)-0.5*n)
+df_cumsum$Capsular_invasion=factor(df_cumsum$Capsular_invasion,levels=c("Y","N"))
+
+
+
+p<-ggplot(df_cumsum, aes(x=Cluster, y=n,fill=Capsular_invasion)) +
+  geom_bar(stat="identity")+geom_text(aes(y=label_ypos, label=n), vjust=1.2, 
+            color="black", size=3.5)+
+  scale_fill_brewer(palette="Paired")+theme_minimal()+coord_flip()
+p
+```
+
+## Using differential pathway singscore between Invasion vs non-invasion to do cluster analysis (p<0.05)
+```{r,fig.height=6,fig.width=8}
+# Pro_singscore_t=t(Pro_singscore)
+# Pro_singscore=Merge_two_cohorts_singscore %>%.[grepl("RCCN",rownames(.)),]
+# Pro_singscore_t= t(Pro_singscore)
+# Invasion_ID=clinical_54_data_2%>%filter(Capsular_invasion=="Y")%>%.$Sample_ID
+# Non_invasion_ID=clinical_54_data_2%>%filter(Capsular_invasion=="N")%>%.$Sample_ID
+# Invasion_vs_non_stat =Wilcox_test_singscore(Pro_singscore_t,Non_invasion_ID,Invasion_ID)
+# Invasion_vs_non_stat_p005=Invasion_vs_non_stat%>%filter(pvalue<0.05) %>%select(-padj)%>% rename(FC_Invasion_vs_Non=FoldChange)
+# write.table(Invasion_vs_non_stat_p005,file=file.path(Rawdata_path,"Proteomics","Invasion_vs_Non_Pathway_singscore_p0.05.txt" ),sep="\t")
+
+```
+
+
+```{r,fig.height=6,fig.width=8}
+#nstall.packages("factoextra")
+Invasion_vs_non_stat_p005=read.table(file.path(Rawdata_path,"Proteomics","Invasion_vs_Non_Pathway_singscore_p0.05.txt" ),sep="\t")
+Pro_singscore=Merge_two_cohorts_singscore %>%.[grepl("RCCN",rownames(.)),]
+Data_select=Pro_singscore %>% .[,colnames(.) %in% Invasion_vs_non_stat_p005$SYMBOL] %>% t() %>% na.omit() %>%t()
+# setdiff(Invasion_vs_non_stat_p005$SYMBOL,colnames(Pro_singscore) )
+
+set.seed(1234)
+df=Data_select
+km.res <- kmeans(df, 3, nstart =50)
+Cluster_mean=aggregate(Pro_singscore, by=list(cluster=km.res$cluster), mean)
+factoextra::fviz_cluster(km.res, df, eom = c("point"),ellipse.type = "convex")
+df_clinical=as.data.frame(km.res$cluster)%>% tibble::rownames_to_column(var="Sample_ID") %>% left_join(.,clinical_54_data_2)
+colnames(df_clinical)[2]="Cluster"
+
+#write.table(df_clinical,file=file.path(Rawdata_path,"Proteomics","54_proteomics_singscore_kmeans_1.txt"))
+
+data=df_clinical[,c("Cluster","Capsular_invasion")] %>% group_by(Cluster,Capsular_invasion) %>% summarise(n=n())
+
+df_cumsum <- plyr::ddply(data, "Cluster",
+                   transform, label_ypos=cumsum(n)-0.5*n)
+df_cumsum$Capsular_invasion=factor(df_cumsum$Capsular_invasion,levels=c("Y","N"))
+#df_cumsum$stage2=factor(df_cumsum$stage2)
+p<-ggplot(df_cumsum, aes(x=Cluster, y=n,fill=Capsular_invasion)) +
+  geom_bar(stat="identity")+geom_text(aes(y=label_ypos, label=n), vjust=1.2, 
+            color="black", size=3.5)+
+  scale_fill_brewer(palette="Paired")+theme_minimal()+coord_flip()
+p
+CHKIRC_kmeans_1_data=df_clinical
+print ("cluster 1: Primary& early invasion,CLuster 2,3:Invasion ")
+```
+## umap:differential pathways singscore (180 pathways with pvalue<0.05, wilcox,scale)
+```{r}
+# install.packages("umap")
+set.seed(1234)
+Invasion_vs_non_stat_p005=read.table(file.path(Rawdata_path,"Proteomics","Invasion_vs_Non_Pathway_singscore_p0.05.txt" ),sep="\t")
+# kmeans_1_data=read.table(file.path( Rawdata_path,"Proteomics","54_proteomics_singscore_kmeans_1.txt"))
+
+Data_select=Pro_singscore %>% .[,colnames(.) %in% Invasion_vs_non_stat_p005$SYMBOL] %>% t() %>% na.omit() %>%t()
+Data.umap = umap::umap(Data_select)
+Pro_singscore_scale=Pro_singscore%>%scale()
+umap_plot_df <- data.frame(Data.umap$layout)%>%setNames(c("UMAP1","UMAP2"))
+rownames(umap_plot_df)==rownames(Pro_singscore_scale)
+umap_plot_df_2=cbind(umap_plot_df,Pro_singscore_scale)%>%tibble::rownames_to_column(.,var="Sample_ID")%>%left_join(.,CHKIRC_kmeans_1_data,by="Sample_ID")%>% mutate(Cluster_Subtype=ifelse((Cluster==3|Cluster==2)&Capsular_invasion=="Y","CHKIRC_Invasion","CHKIRC_Primary&Early_invasion"))
+umap_plot_df_2$Cluster=factor(umap_plot_df_2$Cluster)
+
+ 
+
+ggplot(
+  umap_plot_df_2,
+  aes(
+    x = UMAP1,
+    y = UMAP2,
+    shape=Cluster,
+    color=Cluster_Subtype,
+    shape=as.character(Cluster)# label points with different colors for each `subgroup`
+  )
+) +  geom_point( size = 3)
+
+CHKIRC_umap=umap_plot_df_2
+```
+
+
+
+```{r, include=F,eval=F}
+## Early_invasion vs Primary : Rawdata_path,Proteomics,Early_invasion_vs_primary_singscore_p0.05.txt: not run in version3
+# Kmeans_1=read.table (file.path(Rawdata_path,"Proteomics","54_proteomics_singscore_kmeans_1.txt"),header=T)
+# K_select=Kmeans_1 %>%filter(Cluster==1)
+# Primary=K_select%>%filter(Capsular_invasion=="N")
+# Early_invasion=K_select%>%filter(Capsular_invasion=="Y")
+# Pro_singscore_t=t(Pro_singscore)
+# Early_vs_primary_stat =Wilcox_test_singscore(Pro_singscore_t,Primary$Sample_ID,Early_invasion$Sample_ID)
+# Early_vs_primary_stat_p005=Early_vs_primary_stat %>%filter(pvalue<0.05) %>%select(-padj)%>% rename(Early_vs_primary=FoldChange)
+# write.table(Early_vs_primary_stat_p005,file=file.path(Rawdata_path,"Proteomics","Early_invasion_vs_primary_singscore_p0.05.txt" ),sep="\t")
+set.seed(1234)
+Early_vs_primary_stat_p005=read.table(file.path(Rawdata_path,"Proteomics","Early_invasion_vs_primary_singscore_p0.05.txt" ),sep="\t")
+Kmeans_1=read.table (file.path(Rawdata_path,"Proteomics","54_proteomics_singscore_kmeans_1.txt"),header=T)
+K_select=Kmeans_1 %>%filter(Cluster==1)
+Data_select=Pro_singscore %>% .[,colnames(.) %in% Early_vs_primary_stat_p005$SYMBOL]%>%.[rownames(.) %in% K_select$Sample_ID,]
+df=Data_select
+km.res <- kmeans(df, 3, nstart = 25)
+factoextra::fviz_cluster(km.res, df, eom = c("point"),ellipse.type = "convex")
+df_clinical=as.data.frame(km.res$cluster)%>% tibble::rownames_to_column(var="Sample_ID") %>% left_join(.,clinical_54_data_2)
+colnames(df_clinical)[2]="Cluster"
+
+data=df_clinical[,c("Cluster","Capsular_invasion")] %>% group_by(Cluster,Capsular_invasion) %>% summarise(n=n())
+df_cumsum <- plyr::ddply(data, "Cluster",
+                   transform, label_ypos=cumsum(n)-0.5*n)
+df_cumsum$Capsular_invasion=factor(df_cumsum$Capsular_invasion,levels=c("Y","N"))
+
+p<-ggplot(df_cumsum, aes(x=Cluster, y=n,fill=Capsular_invasion)) +
+  geom_bar(stat="identity")+geom_text(aes(y=label_ypos, label=n), vjust=1.2, 
+            color="black", size=3.5)+
+  scale_fill_brewer(palette="Paired")+theme_minimal()+coord_flip()
+p
+```
+
+
+```{r, include=F,eval=F}
+Data.umap = umap::umap(Data_select)
+Pro_singscore_scale=Data_select%>%scale()
+umap_plot_df <- data.frame(Data.umap$layout)%>%setNames(c("UMAP1","UMAP2"))
+rownames(umap_plot_df)==rownames(Pro_singscore_scale)
+umap_plot_df_2=cbind(umap_plot_df,Pro_singscore_scale)%>%tibble::rownames_to_column(.,var="Sample_ID") %>%left_join(.,df_clinical)
+umap_plot_df_2$Cluster=factor(umap_plot_df_2$Cluster)
+
+ggplot(
+  umap_plot_df_2,
+  aes(
+    x = UMAP1,
+    y = UMAP2,
+    shape=Cluster,
+    color=Capsular_invasion,
+    shape=as.charecter(Cluster)# label points with different colors for each `subgroup`
+  )
+) +  geom_point( size = 3)
+
+
+K_subtype=umap_plot_df_2%>%mutate(Cluster_Subtype=ifelse((Cluster==3|Cluster==2)&Capsular_invasion=="N","Primary", 
+                                                    ifelse(Cluster==1&Capsular_invasion=="Y","Early_invasion","Outlier")))
+
+#write.table(K_subtype,file.path(Rawdata_path,"Proteomics","Primary&early_22_samples_UMAP_kmeans.txt"),sep="\t")
+```
+
+
+
+
+
+
+
+```{r}
+#Proteomics_clinical=as.data.frame(km.res$cluster)%>% tibble::rownames_to_column(var="Sample_ID") %>% left_join(.,Clinical_combine)
+#Proteomics_clinical%>%group_by(km.res$cluster,stage)%>%summarize(n=n())
+
+```
+
+
+# CPTAC data (protein expression data normalized by ACTB)
+
+```{r}
+CPTAC_clinical_path=file.path(Path,"Raw_data/CPTAC/Clinical")
+CPTAC_proteomics_path=file.path(Path,"Raw_data/CPTAC/Proteomics")
+CPTAC_clinic=readxl::read_excel(file.path(CPTAC_clinical_path,"S050_S044_CPTAC_ccRCC_Discovery_Cohort_Clinical_Data_r4_Sept2019.xlsx"),
+                                sheet=2)
+CPTAC_Pro_singscore=Merge_two_cohorts_singscore %>%.[!grepl("RCCN",rownames(.)),]
+# Pro_singscore_scale=Merge_two_chorts_singscore %>%.[grepl("RCCN",rownames(.)),]%>%scale()
+
+CPTAC_proteomics_ratio=read.table(file.path(CPTAC_proteomics_path,"CPTAC3_CCRCC.tumor2normal.txt"),fill=T,header = T,check.names = F) %>% .[4:9967,]%>%matrix.please()%>%as.data.frame()
+colnames(CPTAC_clinic)=gsub("/","_",colnames(CPTAC_clinic))
+
+CPTAC_clinic_paried=CPTAC_clinic %>% dplyr::filter(tumor_normal=="TN")%>%mutate (stage=ifelse(grepl( "pT1",pathologic_staging_primary_tumor_pT),"T1","T2-T4"))  %>% mutate(stage2=gsub("a|b","",pathologic_staging_primary_tumor_pT)) %>%
+  rename(Sample_ID="case_id",diameter="tumor_size_in_cm")%>% .[,c("Sample_ID","age","stage","stage2","diameter")]  %>%mutate(Capsular_invasion="Unknown")
+setdiff(CPTAC_clinic_paried$Sample_ID,colnames(CPTAC_proteomics_ratio))
+
+```
+
+
+
+```{r,eval=F}
+# Used for the data testing, no run for the formal analysis
+Invasion_vs_non_stat_p005=read.table(file.path(Rawdata_path,"Proteomics","Invasion_vs_Non_Pathway_singscore_p0.05.txt" ),sep="\t")
+Data_select=CPTAC_Pro_singscore %>% .[,colnames(.) %in% Invasion_vs_non_stat_p005$SYMBOL]
+set.seed(1234)
+df=Data_select
+km.res <- kmeans(df, 5, nstart = 25)
+Cluster_mean=aggregate(CPTAC_Pro_singscore, by=list(cluster=km.res$cluster), mean)
+factoextra::fviz_cluster(km.res, df, eom = c("point"),ellipse.type = "convex")
+df_clinical=as.data.frame(km.res$cluster)%>% tibble::rownames_to_column(var="Sample_ID") %>% left_join(.,CPTAC_clinic_paried)
+colnames(df_clinical)[2]="Cluster"
+
+#write.table(df_clinical,file=file.path(Rawdata_path,"Proteomics","54_proteomics_singscore_kmeans_1.txt"))
+data=df_clinical[,c("Cluster","stage")] %>% group_by(Cluster,stage) %>% summarise(n=n())
+
+df_cumsum <- plyr::ddply(data, "Cluster",
+                   transform, label_ypos=cumsum(n)-0.5*n)
+df_cumsum$stage=factor(df_cumsum$stage,levels=c("T2-T4","T1"))
+#df_cumsum$stage2=factor(df_cumsum$stage2)
+p<-ggplot(df_cumsum, aes(x=Cluster, y=n,fill=stage)) +
+  geom_bar(stat="identity")+geom_text(aes(y=label_ypos, label=n), vjust=1.2, 
+            color="black", size=3.5)+
+  scale_fill_brewer(palette="Paired")+theme_minimal()+coord_flip()
+p
+
+
+```
+```{r,include=F}
+Invasion_vs_non_stat_p005=read.table(file.path(Rawdata_path,"Proteomics","Invasion_vs_Non_Pathway_singscore_p0.05.txt" ),sep="\t")
+colnames(Invasion_vs_non_stat_p005)=gsub("C2CPG","C2CGP",colnames(Invasion_vs_non_stat_p005))
+
+set.seed(1234)
+Data_select=CPTAC_Pro_singscore %>% .[,colnames(.) %in% Invasion_vs_non_stat_p005$SYMBOL]
+df=Data_select
+km.res <- kmeans(df, 5, nstart = 100)
+Cluster_mean=aggregate(CPTAC_Pro_singscore, by=list(cluster=km.res$cluster), mean)
+df_clinical=as.data.frame(km.res$cluster)%>% tibble::rownames_to_column(var="Sample_ID") %>% left_join(.,CPTAC_clinic_paried)
+colnames(df_clinical)[2]="Cluster"
+
+Data_select=CPTAC_Pro_singscore %>% .[,colnames(.) %in% Invasion_vs_non_stat_p005$SYMBOL]
+Data.umap = umap::umap(Data_select)
+Pro_singscore_scale=CPTAC_Pro_singscore%>%scale()
+
+umap_plot_df <- data.frame(Data.umap$layout)%>%setNames(c("UMAP1","UMAP2"))
+rownames(umap_plot_df)==rownames(Pro_singscore_scale)
+umap_plot_df_2=cbind(umap_plot_df,Pro_singscore_scale)%>%tibble::rownames_to_column(.,var="Sample_ID") %>%left_join(.,df_clinical)
+umap_plot_df_2$Cluster=factor(umap_plot_df_2$Cluster)
+ggplot(
+  umap_plot_df_2,
+  aes(
+    x = UMAP1,
+    y = UMAP2,
+    shape=Cluster,
+    color=stage,
+    #shape=stage# label points with different colors for each `subgroup`
+  )
+) +  geom_point( size = 3)
+
+CPTAC_UMAP=umap_plot_df_2
+CPTAC_clinic_cluster=df_clinical
+```
+
+# CPTAC and CHKIRC combination
+
+## CPTAC (pT1 AND pT2 phase) & CHKIRC (pT1 AND pT2) combination and analysis : 99 patients
+
+```{r}
+#Merge_two_cohorts_singscore
+CHKIRC_T_Stage=clinical_54_data_2[c("Sample_ID","T_stage","Age","Tumor_size(cm)")]%>%mutate(stage2=paste0("p",T_stage))%>%rename(age=Age,Tumor_size_in_cm="Tumor_size(cm)")%>%.[,colnames(.) %in% c("Sample_ID","age","Tumor_size_in_cm","stage2")]
+CPTAC_clinic_paried_T_stage=CPTAC_clinic_paried%>%rename(Tumor_size_in_cm=diameter) %>% .[,colnames(.) %in% c("Sample_ID","age","Tumor_size_in_cm","stage2")]
+
+CPTAC_CHKIRC_clinic=rbind(CHKIRC_T_Stage,CPTAC_clinic_paried_T_stage)
+CPTAC_CHKIRC_clinic_T1= CPTAC_CHKIRC_clinic%>% filter(stage2=="pT1"|stage2=="pT2")
+nrow(CPTAC_CHKIRC_clinic_T1)
+```
+
+
+## UMAP plot for CPTAC subtypes based on the differential pathways (Invasion_vs_Non_Pathway_singscore_p0.05)
+```{r}
+Merge_T1_singscore=Merge_two_cohorts_singscore[rownames(Merge_two_cohorts_singscore) %in% CPTAC_CHKIRC_clinic_T1$Sample_ID, ]
+set.seed(1234)
+
+# Merge_two_cohorts_singscore :calulate from log(T/N)
+Invasion_vs_non_stat_p005=read.table(file.path(Rawdata_path,"Proteomics","Invasion_vs_Non_Pathway_singscore_p0.05.txt" ),sep="\t")
+Invasion_vs_non_stat_p005$SYMBOL=gsub("C2CPG","C2CGP",Invasion_vs_non_stat_p005$SYMBOL)
+Invasion_vs_non_stat_p005$SYMBOL=gsub("_$","",Invasion_vs_non_stat_p005$SYMBOL)
+
+df=Merge_T1_singscore[rownames(Merge_T1_singscore) %in% CPTAC_CHKIRC_clinic_T1$Sample_ID ,colnames(Merge_T1_singscore) %in% Invasion_vs_non_stat_p005$SYMBOL] %>%t() %>% na.omit() %>%t() %>%as.data.frame() %>%scale()
+
+
+df=Merge_T1_singscore[rownames(Merge_T1_singscore) %in% CPTAC_CHKIRC_clinic_T1$Sample_ID ,colnames(Merge_T1_singscore) %in% Invasion_vs_non_stat_p005$SYMBOL] %>%t() %>% na.omit() %>%t() %>%as.data.frame() %>%scale()
+
+nrow(df)==99
+
+km.res <- kmeans(df, 5, nstart = 50)
+df_clinical=as.data.frame(km.res$cluster)%>% tibble::rownames_to_column(var="Sample_ID") %>%
+  left_join(.,CHKIRC_umap[,c("Sample_ID","Cluster_Subtype")],by="Sample_ID")%>% mutate(Cluster_Subtype=ifelse(is.na(Cluster_Subtype),"CPTAC" ,Cluster_Subtype))
+
+colnames(df_clinical)[2]="Cluster"
+
+
+set.seed(1234)
+
+Data_select= df
+Data.umap = umap::umap(Data_select)
+
+umap_plot_df <- data.frame(Data.umap$layout)%>%setNames(c("UMAP1","UMAP2"))%>%tibble::rownames_to_column(.,var="Sample_ID")
+rownames(umap_plot_df)==rownames(Merge_T1_singscore)
+umap_plot_df_2=Merge_T1_singscore%>%tibble::rownames_to_column(.,var="Sample_ID") %>%right_join(.,umap_plot_df,by="Sample_ID")%>%left_join(.,df_clinical)%>%mutate(Cluster_Subtype=ifelse(is.na(Cluster_Subtype),"CPTAC",Cluster_Subtype))
+umap_plot_df_2$Cluster_Subtype=factor(umap_plot_df_2$Cluster_Subtype)
+
+ggplot(
+  umap_plot_df_2,
+  aes(
+    x = UMAP1,
+    y = UMAP2,
+    shape=as.character(Cluster),
+    color=Cluster_Subtype
+    #shape=stage# label points with different colors for each `subgroup`
+  )
+) +  geom_point( size = 3)
+
+ggplot(
+  umap_plot_df_2,
+  aes(
+    x = UMAP1,
+    y = UMAP2,
+    shape=as.character(Cluster_Subtype),
+    #color=Cluster_Subtype,
+    #shape=stage# label points with different colors for each `subgroup`
+  )
+) +  geom_point( size = 3)+ggtitle("CHKIRC&CPTAC_T1")
+
+data=umap_plot_df_2[,c("Cluster","Cluster_Subtype")]%>% group_by(Cluster,Cluster_Subtype) %>% summarise(n=n())
+
+df_cumsum <- plyr::ddply(data, "Cluster",
+                   transform, label_ypos=cumsum(n)-0.5*n)
+# df_cumsum$stage=factor(df_cumsum$stage,levels=c("T2-T4","T1"))
+df_cumsum$Cluster_Subtype=factor(df_cumsum$Cluster_Subtype,c( "CPTAC","CHKIRC_Primary&Early_invasion","CHKIRC_Invasion"))
+p<-ggplot(df_cumsum, aes(x=as.character(Cluster), y=n,fill=Cluster_Subtype)) +
+  geom_bar(stat="identity")+geom_text(aes(y=label_ypos, label=n), vjust=1.2, 
+            color="black", size=3.5)+
+  scale_fill_brewer(palette="Paired")+theme_minimal()+coord_flip()
+p
+
+Cluster_anno=data.frame(Cluster=c(1:5),Subtype_2=c("T1&T2_Invasion_type1","T1&T2_Invasion_type1","Primary&Early_Invasion","T1&T2_Invasion_type1","T1&T2_Invasion_type2"))
+umap_plot_df_3=umap_plot_df_2%>% left_join(.,Cluster_anno)
+umap_plot_df_3$Subtype_2=factor(umap_plot_df_3$Subtype_2, levels=c("Primary&Early_Invasion","T1&T2_Invasion_type1","T1&T2_Invasion_type2"))
+ggplot(
+  umap_plot_df_3,
+  aes(
+    x = UMAP1,
+    y = UMAP2,
+    shape=as.character(Cluster),
+    color=Subtype_2
+    #shape=stage# label points with different colors for each `subgroup`
+  )
+) +  geom_point( size = 3)
+
+T1_singscore_umap=umap_plot_df_3
+
+#CPTAC_CH_primary_early=umap_plot_df_3[,c("Cluster","Sample_ID")]%>% subset(Cluster %in% c(2))
+```
+
+
+## Kruskal test for three groups: Primary&early_invasion, Type1 and Type2 differnetial pathways (no need for the manuscript)
+```{r,include=F}
+T1_singscore=T1_singscore_umap %>%matrix.please() %>%as.data.frame() %>%.[,grepl("singscore",colnames(.))] %>%t()
+T1_singscore_group=T1_singscore_umap[,c("Sample_ID","Subtype_2")]
+
+T1_Kruskal_test=Kruskal_singscore (T1_singscore,T1_singscore_group)%>%as.data.frame()
+T1_Kruskal_test_p001=T1_Kruskal_test%>%dplyr::filter(padj<0.001)
+```
+
+
+```{r,include=F}
+
+T1_singscore=T1_singscore_umap %>%matrix.please() %>%as.data.frame() %>%.[,grepl("singscore",colnames(.))] %>%t()
+T1_invasion_type1=T1_singscore_umap%>%dplyr::filter(Subtype_2=="T1&T2_Invasion_type1")%>%.$Sample_ID
+T1_invasion_type2=T1_singscore_umap%>%dplyr::filter(Subtype_2=="T1&T2_Invasion_type2")%>%.$Sample_ID
+Primary=T1_singscore_umap%>%dplyr::filter(Subtype_2=="Primary&Early_Invasion")%>%.$Sample_ID
+
+Type2_vs_Type1_singscore_wilcox=Wilcox_test_singscore_fc(T1_singscore,T1_invasion_type1,T1_invasion_type2)
+Type2_vs_Type1_singscore_wilcox_padj0001_up=Type2_vs_Type1_singscore_wilcox%>%dplyr::filter(padj<0.001&FoldChange>0)
+
+Type2_vs_Primary_singscore_wilcox=Wilcox_test_singscore_fc(T1_singscore,Primary,T1_invasion_type2)
+Type2_vs_Primary_singscore_wilcox_padj0001_up=Type2_vs_Primary_singscore_wilcox%>%dplyr::filter(padj<0.001&FoldChange>0)
+
+Type2_vs_Primary_singscore_wilcox_test=Type2_vs_Primary_singscore_wilcox%>%dplyr::filter(grepl("Glycolysis",SYMBOL))
+
+Type2_up_sig=intersect(Type2_vs_Primary_singscore_wilcox_padj0001_up$SYMBOL,Type2_vs_Type1_singscore_wilcox_padj0001_up$SYMBOL)
+
+Type2_up_sig_keypath=c( "Wiki_IL_5_Signaling_Pathway_singscore","Wiki_Toll_like_Receptor_Signaling_Pathway_singscore" ,"Wiki_IL_2_Signaling_Pathway_singscore" , "Wiki_DNA_Damage_Response_only_ATM_dependent_singscore" , "Wiki_IL_9_Signaling_Pathway_singscore" ,
+  "Wiki_IL_4_Signaling_Pathway_singscore", "Wiki_IL_3_Signaling_Pathway_singscore","Wiki_IL_9_Signaling_Pathway_singscore" , "Wiki_IL_10_Anti_inflammatory_Signaling_Pathway_singscore" ,    "Wiki_IL_18_signaling_pathway_singscore"    )
+```
+
+
+
+```{r}
+Bar_plot_2=function(data,pathway_name,x_name,fill_name) {
+  my_comparisons <- list( c("T1&T2_Invasion_type1", "Primary&Early_Invasion"), c("T1&T2_Invasion_type2", "Primary&Early_Invasion"),c("T1&T2_Invasion_type1","T1&T2_Invasion_type2"))
+  ggplot(data,aes_string(
+    x =x_name,
+    y = pathway_name,
+    fill=fill_name
+    ) )+  geom_violin( ) +
+  geom_boxplot(width=0.1) + theme_minimal()+ggpubr::stat_compare_means(comparisons =  my_comparisons) }
+
+
+#umap_plot_df_3$age=as.integer(umap_plot_df_3$age)
+
+# Bar_plot_3=function(data,pathway_name,x_name,fill_name) {
+#   my_comparisons <- list( c("T1&T2_Invasion_type1", "Primary&Early_Invasion"), c("T1&T2_Invasion_type2", "Primary&Early_Invasion"),c("T1&T2_Invasion_type1","T1&T2_Invasion_type2"))
+#   ggplot(data,aes_string(
+#     x =x_name,
+#     y = pathway_name,
+#     fill=fill_name
+#     ) )+  geom_violin( ) +
+#   geom_boxplot(width=0.1) + theme(plot.title=element_text(size=5),legend.position="none")+ggpubr::stat_compare_means(comparisons =  my_comparisons) }
+
+
+Bar_plot_3=function(data,pathway_name,x_name,fill_name,compare_list) {
+  my_comparisons <- compare_list
+  ggplot(data,aes_string(
+    x =x_name,
+    y = pathway_name,
+    fill=fill_name
+    ) )+  geom_violin( ) +
+  geom_boxplot(width=0.1) + theme(plot.title=element_text(size=5),legend.position="none")+theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+ggpubr::stat_compare_means(comparisons =  my_comparisons) }
+
+
+Kmeans_umap_by_genelist=function(Data,k_n,genelist,clinical){
+  set.seed(1234)
+  df=Data[rownames(Data) %in% genelist,] %>%t() %>% na.omit()   %>%as.data.frame()
+  
+  km.res <- kmeans(df, k_n, nstart = 150)
+ 
+  df_clinical=as.data.frame(km.res$cluster)%>% tibble::rownames_to_column(var="Sample_ID") %>%
+  left_join(.,clinical,by="Sample_ID") 
+ 
+  Data_select= df
+  Data.umap = umap::umap(Data_select)
+  # return(Data.umap)
+  umap_plot_df <- data.frame(Data.umap$layout)%>%setNames(c("UMAP1","UMAP2"))%>%tibble::rownames_to_column(.,var="Sample_ID")
+  rownames(umap_plot_df)==rownames(Data_select)
+  umap_plot_df_2=t(Data)%>%as.data.frame() %>%tibble::rownames_to_column(.,var="Sample_ID")%>%right_join(.,umap_plot_df,by="Sample_ID")%>%left_join(.,df_clinical) %>%rename(Cluster=`km.res$cluster`) %>%as.data.frame()
+   umap_plot_df_2$Cluster=as.character(umap_plot_df_2$Cluster)
+  return(umap_plot_df_2)
+}
+
+
+UMAP_Pahtway_plot_2=function(Data,Pathway_name,Mid_select) {
+ #K2=Data%>% dplyr::filter(Cluster==2) %>%.[,Pathway_name]  
+
+ K1=Data%>% dplyr::filter(Subtype_2==Mid_select)%>%.[,Pathway_name] 
+
+ mid<-median(K1) 
+ # return(mid)
+ PLOT=ggplot(
+   Data,aes_string(x = "UMAP1",
+    y = "UMAP2",  color =Pathway_name,shape="Subtype_2"))+ geom_point( size = 3) +scale_color_gradient2(midpoint=mid, low="blue", mid="grey",high="red", space ="Lab" )+ggtitle(Pathway_name) + theme(plot.title=element_text(size=5),legend.position="none")
+}
+
+UMAP_legend=function(Data){
+  my_hist <-ggplot(
+  Data,aes_string(x = "UMAP1",
+    y = "UMAP2",  shape="Subtype_2"))+geom_point()
+
+legend <- cowplot::get_legend(my_hist)
+
+}
+
+UMAP_legend=function(Data){
+  my_hist <-ggplot(
+  Data,aes_string(x = "UMAP1",
+    y = "UMAP2",  shape="Subtype_2"))+geom_point()
+
+legend <- cowplot::get_legend(my_hist)
+
+}
+
+UMAP_legend_2=function(data,pathway_name,x_name,fill_name){
+  my_hist <-ggplot(data,aes_string(
+    x =x_name,
+    y = pathway_name,
+    fill=fill_name
+    ) )+  geom_violin( )
+
+legend <- cowplot::get_legend(my_hist)
+
+}
+
+
+Batch_boxplot=function(pathway_list,data,x_name,fillby,nCol) {
+  library(gridExtra)
+  plist=list()
+  for(i in 1:length(pathway_list)) {
+  Pathway=Key_path_select[i]
+  plist[[i]]=Bar_plot_2(data,Pathway,x_name,fillby )
+
+  }
+  plist[["legend"]]=UMAP_legend_2(data,pathway_list[1] ,fillby,nCol)
+
+  do.call("grid.arrange", c(plist, ncol=nCol))
+  
+}
+
+
+
+Batch_boxplot_2=function(pathway_list,data,x_name,fillby,nCol,compare_list) {
+  library(gridExtra)
+  plist=list()
+  for(i in 1:length(pathway_list)) {
+  Pathway=pathway_list[i]
+  plist[[i]]=Bar_plot_3(data,Pathway,x_name,fillby,compare_list )
+
+  }
+  plist[["legend"]]=UMAP_legend_2(data,pathway_list[1] ,fillby,fillby)
+
+  do.call("grid.arrange", c(plist, ncol=nCol))
+  
+}
+```
+
+## Age, GIT2 in differnet groups
+
+```{r}
+CHKIRC_CPTAC_prot_ratio_norm_log_2=CHKIRC_CPTAC_prot_ratio_norm_log %>%tibble::rownames_to_column(.,var="Sample_ID")
+T1_df_clinical_2=T1_singscore_umap[c("Sample_ID","Subtype_2")]%>%left_join(.,CHKIRC_CPTAC_prot_ratio_norm_log_2,by="Sample_ID")%>%left_join(.,CPTAC_CHKIRC_clinic,by="Sample_ID")
+
+T1_df_clinical_2$age=as.integer(T1_df_clinical_2$age)
+T1_df_clinical_2$Subtype_2=factor(T1_df_clinical_2$Subtype_2,levels = c("Primary&Early_Invasion","T1&T2_Invasion_type1","T1&T2_Invasion_type2"))
+Bar_plot_2(T1_df_clinical_2,"age","Subtype_2","Subtype_2")
+Bar_plot_2(T1_df_clinical_2,"Tumor_size_in_cm","Subtype_2","Subtype_2")
+Bar_plot_2(T1_df_clinical_2,"GIT2","Subtype_2","Subtype_2")
+nrow(T1_df_clinical_2)
+```
+
+
+## Invasion Type1 and type2 vs noninvasion&early invasion
+** Signaure for the invasion  "Wiki_Glycolysis_and_Gluconeogenesis_singscore", "HALLMARK_MTORC1_SIGNALING_singscore","C2CGP_REACTOME_CELL_CYCLE_CHECKPOINTS_singscore","C2CGP_REACTOME_AUTOPHAGY_singscore"
+** slight change in invasion:"C2CGP_KEGG_CITRATE_CYCLE_TCA_CYCLE_singscore", "Wiki_TCA_Cycle_aka_Krebs_or_citric_acid_cycle_singscore",
+```{r,fig.height=14,fig.width=16}
+Key_path_select=c("Wiki_Glycolysis_and_Gluconeogenesis_singscore","C2CGP_REACTOME_AUTOPHAGY_singscore","HALLMARK_MTORC1_SIGNALING_singscore",
+"C2CGP_REACTOME_CELL_CYCLE_CHECKPOINTS_singscore","Wiki_Cell_Cycle_singscore"  ,"C2CGP_BIOCARTA_ARENRF2_PATHWAY_singscore")
+Invasion_sig=c("Wiki_Glycolysis_and_Gluconeogenesis_singscore","HALLMARK_MTORC1_SIGNALING_singscore","C2CGP_REACTOME_CELL_CYCLE_CHECKPOINTS_singscore","C2CGP_REACTOME_AUTOPHAGY_singscore","C2CGP_BIOCARTA_ARENRF2_PATHWAY_singscore")
+my_comparisons <- list( c("T1&T2_Invasion_type1", "Primary&Early_Invasion"), c("T1&T2_Invasion_type2", "Primary&Early_Invasion"),c("T1&T2_Invasion_type1","T1&T2_Invasion_type2"))
+
+Batch_boxplot_2 (Invasion_sig,T1_singscore_umap,"Subtype_2" ,fillby="Subtype_2",nCol=3,my_comparisons )
+```
+
+
+```{r,fig.height=14,fig.width=12}
+Other_sig=c("C2CGP_KEGG_CITRATE_CYCLE_TCA_CYCLE_singscore", "Wiki_TCA_Cycle_aka_Krebs_or_citric_acid_cycle_singscore","Wiki_Oxidative_phosphorylation_singscore","Wiki_Cell_Cycle_singscore","HALLMARK_APOPTOSIS_singscore","Wiki_Apoptosis_singscore","C2CGP_REACTOME_PI3K_AKT_SIGNALING_IN_CANCER_singscore")
+
+my_comparisons <- list( c("T1&T2_Invasion_type1", "Primary&Early_Invasion"), c("T1&T2_Invasion_type2", "Primary&Early_Invasion"),c("T1&T2_Invasion_type1","T1&T2_Invasion_type2"))
+
+Batch_boxplot_2 (Other_sig,T1_singscore_umap,"Subtype_2" ,fillby="Subtype_2",nCol=3,my_comparisons )
+```
+
+### Type1 vs type2 sigature
+
+```{r,fig.height=10,fig.width=12}
+Type1_sig=c("Wiki_Mitochondrial_LC_Fatty_Acid_Beta_Oxidation_singscore","Wiki_Complement_Activation_singscore","HALLMARK_EPITHELIAL_MESENCHYMAL_TRANSITION_singscore","C2CGP_KEGG_ECM_RECEPTOR_INTERACTION_singscore")
+
+my_comparisons <- list( c("T1&T2_Invasion_type1", "Primary&Early_Invasion"), c("T1&T2_Invasion_type2", "Primary&Early_Invasion"),c("T1&T2_Invasion_type1","T1&T2_Invasion_type2"))
+
+Batch_boxplot_2 (Type1_sig,T1_singscore_umap,"Subtype_2" ,fillby="Subtype_2",nCol=3,my_comparisons )
+```
+
+
+
+
+** Correlation (no running)
+```{r,eval=F}
+Target_path=T1_singscore_umap[,c("Sample_ID","Wiki_Glycolysis_and_Gluconeogenesis_singscore","C2CGP_KEGG_CITRATE_CYCLE_TCA_CYCLE_singscore", "Wiki_TCA_Cycle_aka_Krebs_or_citric_acid_cycle_singscore" ,"C2CGP_REACTOME_AUTOPHAGY_singscore","HALLMARK_MTORC1_SIGNALING_singscore",
+"C2CGP_REACTOME_CELL_CYCLE_CHECKPOINTS_singscore","Wiki_Cell_Cycle_singscore"  ,"C2CGP_BIOCARTA_ARENRF2_PATHWAY_singscore","Wiki_Mitochondrial_LC_Fatty_Acid_Beta_Oxidation_singscore","Wiki_Complement_Activation_singscore","HALLMARK_APOPTOSIS_singscore","Wiki_Apoptosis_singscore" ,"C2CGP_REACTOME_PI3K_AKT_SIGNALING_IN_CANCER_singscore","Wiki_Oxidative_phosphorylation_singscore","HALLMARK_EPITHELIAL_MESENCHYMAL_TRANSITION_singscore","C2CGP_KEGG_ECM_RECEPTOR_INTERACTION_singscore")]
+GIT2_plut_keypath_data=T1_df_clinical_2[c("Sample_ID","Subtype_2","GIT2")] %>%left_join(.,Target_path)
+plist_corr=list()
+Path_name=colnames(GIT2_plut_keypath_data)[grepl("singscore",colnames(GIT2_plut_keypath_data))]
+
+for (i in Path_name){
+  data1=GIT2_plut_keypath_data$GIT2
+  data2=GIT2_plut_keypath_data[,i]
+  correlation=cor.test(data1,data2)
+  output=data.frame(Cor.coeff=correlation$estimate,pvalue=correlation["p.value"] )
+  plist_corr[[i]]=output
+}
+GIT2_corr_pathway=do.call("rbind",plist_corr) %>%arrange(p.value)
+
+```
+
+## Heatmap
+
+```{r,fig.height=16,fig.width=15}
+pheatmap_pathway_3<- function (expression_data, Pathway_list,pathway_name,Annotation,Label_def) {
+  Gene_select<-Pathway_list[,pathway_name]%>%unique()
+  Gene_select_anno= expression_data[,colnames(expression_data) %in% Gene_select] %>%t()
+ # return(Gene_select_anno)
+  # Anno_expression_data=Gene_select_anno[,c("SYMBOL",Group_select)] %>% as.data.frame() %>% distinct() %>% na.omit()
+  # rownames(Anno_expression_data)=Anno_expression_data[,"SYMBOL"]
+  # Annotation=group_anno["Gene_type"]
+  # input= Anno_expression_data[,Group_select]
+  # F2_pheatmap <- pheatmap::pheatmap(input, cellwigermline calling GATKdth = 10, cellheight = 12, scale = "row",
+  #                                   treeheight_row = 5,
+  #                                   show_rownames = T,show_colnames = T, 
+  #                                   annotation_col= Annotation,
+  #                                   # annotation_row=Annotation,
+  #                                   annotation_legend=Label_def,
+  #                                   cluster_rows = T,  cluster_cols = F,clustering_distance_rows = "euclidean")
+  pheatmap::pheatmap(Gene_select_anno, cellwigermline= 10, cellheight = 10, scale = "none",
+                                    treeheight_row = 5,main=pathway_name,
+                                    show_rownames = T,show_colnames = F,
+                                    annotation_col= Annotation,
+                                    # annotation_row=Annotation,
+                                    #annotation_legend=Label_def,
+                                    cluster_rows = T,  cluster_cols = F,clustering_distance_rows = "euclidean")
+  
+  # return(Anno_expression_data)
+  # Heatmap (Expression_data_extract, Complex_1_name)
+  # Missing_protein=Anno_expression_data %>% mutate(Proteomics=ifelse(is.na(.[,1]),NA,"P")) %>% .["Proteomics"]
+  # rownames(Missing_protein)=rownames(Anno_expression_data)
+  # reorganized_data= data.frame(SYMBOL=F2_pheatmap$tree_row$labels[F2_pheatmap$tree_row$order]) %>% 
+  #               left_join(.,Anno_expression_data,by="SYMBOL")
+  # # return(reorganized_data)
+  # Missing_data_exp=Gene_select_anno %>% subset (!SYMBOL %in% reorganized_data$SYMBOL) %>%.[,colnames(reorganized_data)] %>% as.data.frame() %>% distinct()
+  # # return(Missing_data_exp)
+  # # rownames(Missing_data_exp)=Missing_data$SYMBOL
+  # output=rbind (reorganized_data,Missing_data_exp)
+  # return(list(Express_data=output,F2_pheatmap))
+}
+
+#CHKIRC_CPTAC_prot_ratio_norm
+#All_pathway_list
+```
+
+
+```{r,fig.height=16,fig.width=15}
+# install.packages("pheatmap")
+
+Sample_anno=T1_df_clinical_2 [,c("Sample_ID","Subtype_2")] %>% arrange(Subtype_2)%>%matrix.please()%>%as.data.frame() %>%setNames("Subtype_2")
+Sample_anno$Subtype_2=factor(Sample_anno$Subtype_2,levels=c("Primary&Early_Invasion" ,"T1&T2_Invasion_type1" ,"T1&T2_Invasion_type2"))
+
+CHKIRC_CPTAC_prot_ratio_norm_log_matrix=CHKIRC_CPTAC_prot_ratio_norm_log_2 %>%matrix.please() %>% as.data.frame() %>% .[match(rownames(Sample_anno),rownames(.)),  ] 
+nrow(CHKIRC_CPTAC_prot_ratio_norm_log_matrix)
+
+pheatmap_pathway_3(CHKIRC_CPTAC_prot_ratio_norm_log_matrix,All_pathway_list,"HALLMARK_EPITHELIAL_MESENCHYMAL_TRANSITION",Sample_anno,"Subtype_2")
+```
+
+
+```{r,fig.height=8,fig.width=8}
+# colnames(All_pathway_list)[grepl("Complement",colnames(All_pathway_list)  )]
+pheatmap_pathway_3(CHKIRC_CPTAC_prot_ratio_norm_log_matrix,All_pathway_list,"Wiki_Complement_Activation",Sample_anno,"Subtype_2")
+```
+
+
+```{r,fig.height=8,fig.width=8}
+pheatmap_pathway_3(CHKIRC_CPTAC_prot_ratio_norm_log_matrix,All_pathway_list,"Wiki_Human_Complement_System",Sample_anno,"Subtype_2")
+
+```
+
+
+** Glycolsyis and Gluconeogenesis
+```{r,fig.height=8}
+# colnames(All_pathway_list)[grepl("Glycolysis",colnames(All_pathway_list)  )]
+pheatmap_pathway_3(CHKIRC_CPTAC_prot_ratio_norm_log_matrix,All_pathway_list,"Wiki_Glycolysis_and_Gluconeogenesis",Sample_anno,"Subtype_2")
+
+```
+
+** oxidative
+```{r,fig.height=8}
+# colnames(All_pathway_list)[grepl("Oxidative",colnames(All_pathway_list)  )]
+pheatmap_pathway_3(CHKIRC_CPTAC_prot_ratio_norm_log_matrix,All_pathway_list,"Wiki_Oxidative_phosphorylation",Sample_anno,"Subtype_2")
+
+```
+
+```{r,fig.height=8}
+# colnames(All_pathway_list)[grepl("ECM",colnames(All_pathway_list)  )]
+
+pheatmap_pathway_3(CHKIRC_CPTAC_prot_ratio_norm_log_matrix,All_pathway_list,"C2CGP_KEGG_ECM_RECEPTOR_INTERACTION",Sample_anno,"Subtype_2")
+
+```
+
+```{r,fig.height=5,fig.width=8}
+# colnames(All_pathway_list)[grepl("Krebs",colnames(All_pathway_list)  )]
+pheatmap_pathway_3(CHKIRC_CPTAC_prot_ratio_norm_log_matrix,All_pathway_list,"Wiki_TCA_Cycle_aka_Krebs_or_citric_acid_cycle",Sample_anno,"Subtype_2")
+
+```
+
+```{r,fig.height=5,fig.width=8}
+# colnames(All_pathway_list)[grepl("LC",colnames(All_pathway_list)  )]
+pheatmap_pathway_3(CHKIRC_CPTAC_prot_ratio_norm_log_matrix,All_pathway_list,"Wiki_Mitochondrial_LC_Fatty_Acid_Beta_Oxidation",Sample_anno,"Subtype_2")
+
+
+
+
+```
+
+
+
+```{r,fig.height=10,fig.width=8}
+# colnames(All_pathway_list)[grepl("MAPK",colnames(All_pathway_list)  )]
+pheatmap_pathway_3(CHKIRC_CPTAC_prot_ratio_norm_log_matrix,All_pathway_list,"Wiki_MAPK_Signaling_Pathway",Sample_anno,"Subtype_2")
+
+```
+```{r,fig.height=5,fig.width=8}
+# colnames(All_pathway_list)[grepl("Wnt",colnames(All_pathway_list)  )]
+pheatmap_pathway_3(CHKIRC_CPTAC_prot_ratio_norm_log_matrix,All_pathway_list, "Wiki_Wnt_Signaling" ,Sample_anno,"Subtype_2")
+
+```
+```{r,fig.height=5,fig.width=8,eval=F}
+# colnames(All_pathway_list)[grepl("TGF",colnames(All_pathway_list)  )]
+pheatmap_pathway_3(CHKIRC_CPTAC_prot_ratio_norm_log_matrix,All_pathway_list,  "Wiki_TGF_beta_Receptor_Signaling" ,Sample_anno,"Subtype_2")
+
+```
+
+```{r,fig.height=5,fig.width=8}
+# colnames(All_pathway_list)[grepl("Cycle",colnames(All_pathway_list)  )]
+pheatmap_pathway_3(CHKIRC_CPTAC_prot_ratio_norm_log_matrix,All_pathway_list,  "Wiki_Cell_Cycle"   ,Sample_anno,"Subtype_2")
+```
+
+
+```{r,fig.height=15,fig.width=8}
+pheatmap_pathway_3(CHKIRC_CPTAC_prot_ratio_norm_log_matrix,All_pathway_list,  "C2CGP_REACTOME_CELL_CYCLE_CHECKPOINTS"   ,Sample_anno,"Subtype_2")
+
+
+```
+
+
+```{r,fig.height=5,fig.width=8}
+# colnames(All_pathway_list)[grepl("Autophagy",colnames(All_pathway_list)  )]
+pheatmap_pathway_3(CHKIRC_CPTAC_prot_ratio_norm_log_matrix,All_pathway_list,  "Wiki_Senescence_and_Autophagy_in_Cancer"   ,Sample_anno,"Subtype_2")
+
+```
+
+```{r,fig.height=5,fig.width=8,eval=F}
+# colnames(All_pathway_list)[grepl("MITOPHAGY",colnames(All_pathway_list)  )]
+pheatmap_pathway_3(CHKIRC_CPTAC_prot_ratio_norm_log_matrix,All_pathway_list, "C2CGP_REACTOME_MITOPHAGY" ,Sample_anno,"Subtype_2")
+
+```
+** "Wiki_Apoptosis" and "HALLMARK_APOPTOSIS"
+```{r,fig.height=5,fig.width=8}
+# colnames(All_pathway_list)[grepl("Apoptosis|APOPTOSIS",colnames(All_pathway_list)  )]
+pheatmap_pathway_3(CHKIRC_CPTAC_prot_ratio_norm_log_matrix,All_pathway_list, "Wiki_Apoptosis"  ,Sample_anno,"Subtype_2")
+```
+
+
+```{r,fig.height=10,fig.width=8}
+pheatmap_pathway_3(CHKIRC_CPTAC_prot_ratio_norm_log_matrix,All_pathway_list, "HALLMARK_APOPTOSIS"  ,Sample_anno,"Subtype_2")
+
+```
+
+
+
+## pT3-T4 evolution (pT3 and pT4: 48,pT1-T2:99)
+
+
+```{r}
+#Merge_two_cohorts_singscore
+CHKIRC_T_Stage=clinical_54_data_2[c("Sample_ID","T_stage","Age","Tumor_size(cm)")]%>%mutate(stage2=paste0("p",T_stage))%>%rename(age=Age,Tumor_size_in_cm="Tumor_size(cm)")%>%.[,colnames(.) %in% c("Sample_ID","age","Tumor_size_in_cm","stage2")]
+CPTAC_clinic_paried_T_stage=CPTAC_clinic_paried%>%rename(Tumor_size_in_cm=diameter) %>% .[,colnames(.) %in% c("Sample_ID","age","Tumor_size_in_cm","stage2")]
+
+CPTAC_CHKIRC_clinic=rbind(CHKIRC_T_Stage,CPTAC_clinic_paried_T_stage)
+CPTAC_CHKIRC_clinic_T1= CPTAC_CHKIRC_clinic%>% filter(stage2=="pT1"|stage2=="pT2")
+```
+
+
+```{r}
+
+set.seed(1234)
+
+# Merge_two_cohorts_singscore :calulate from log(T/N)
+Invasion_vs_non_stat_p005=read.table(file.path(Rawdata_path,"Proteomics","Invasion_vs_Non_Pathway_singscore_p0.05.txt" ),sep="\t")
+Invasion_vs_non_stat_p005$SYMBOL=gsub("C2CPG","C2CGP",Invasion_vs_non_stat_p005$SYMBOL)
+Invasion_vs_non_stat_p005$SYMBOL=gsub("_$","",Invasion_vs_non_stat_p005$SYMBOL)
+
+df=Merge_two_cohorts_singscore[,colnames(Merge_two_cohorts_singscore) %in% Invasion_vs_non_stat_p005$SYMBOL] %>%t() %>% na.omit() %>%t() %>%as.data.frame() %>%scale()
+
+nrow(df)==138
+```
+
+```{r}
+km.res <- kmeans(df, 5, nstart = 50)
+df_clinical=as.data.frame(km.res$cluster)%>% tibble::rownames_to_column(var="Sample_ID") %>%
+  left_join(.,T1_df_clinical_2[,c("Sample_ID","Subtype_2")],by="Sample_ID")%>% mutate(Cluster_Subtype=ifelse(is.na(Subtype_2),"CPTAC_T3&T4" ,Subtype_2))
+ 
+colnames(df_clinical)[2]="Cluster"
+
+
+set.seed(1234)
+
+Data_select= df
+Data.umap = umap::umap(Data_select)
+
+ 
+umap_plot_df <- data.frame(Data.umap$layout)%>%setNames(c("UMAP1","UMAP2"))%>%mutate(Sample_ID=rownames(.))
+# rownames(umap_plot_df)==rownames(Merge_T1_singscore)
+umap_plot_df_2=Merge_two_cohorts_singscore%>%tibble::rownames_to_column(.,var="Sample_ID") %>%right_join(.,umap_plot_df,by="Sample_ID")%>%left_join(.,df_clinical)%>%mutate(Subtype_2=ifelse(is.na(Subtype_2),"CPTAC_T3&T4",as.character(Subtype_2)))
+umap_plot_df_2$Subtype_2=factor(umap_plot_df_2$Subtype_2)
+
+
+```
+
+
+```{r}
+ggplot(
+  umap_plot_df_2,
+  aes(
+    x = UMAP1,
+    y = UMAP2,
+    shape=as.character(Cluster),
+    color=Subtype_2
+    #shape=stage# label points with different colors for each `subgroup`
+  )
+) +  geom_point( size = 3)
+
+ggplot(
+  umap_plot_df_2,
+  aes(
+    x = UMAP1,
+    y = UMAP2,
+    shape=as.character(Subtype_2),
+    #color=Cluster_Subtype,
+    #shape=stage# label points with different colors for each `subgroup`
+  )
+) +  geom_point( size = 3)+ggtitle("CHKIRC&CPTAC_T1")
+
+# data=umap_plot_df_2[,c("Cluster","Cluster_Subtype")]%>% group_by(Cluster,Cluster_Subtype) %>% summarise(n=n())
+
+# df_cumsum <- plyr::ddply(data, "Cluster",
+#                    transform, label_ypos=cumsum(n)-0.5*n)
+# # df_cumsum$stage=factor(df_cumsum$stage,levels=c("T2-T4","T1"))
+# df_cumsum$Cluster_Subtype=factor(df_cumsum$Cluster_Subtype,c( "CPTAC","CHKIRC_Primary&Early_invasion","CHKIRC_Invasion"))
+# p<-ggplot(df_cumsum, aes(x=as.character(Cluster), y=n,fill=Cluster_Subtype)) +
+#   geom_bar(stat="identity")+geom_text(aes(y=label_ypos, label=n), vjust=1.2, 
+#             color="black", size=3.5)+
+#   scale_fill_brewer(palette="Paired")+theme_minimal()+coord_flip()
+# p
+
+Cluster_anno=data.frame(Cluster=c(1:5),Subtype_2=c("T1&T2_Invasion_type1","T1&T2_Invasion_type1","Primary&Early_Invasion","T1&T2_Invasion_type1","T1&T2_Invasion_type2"))
+umap_plot_df_3=umap_plot_df_2%>% mutate(Subtype_3=ifelse(Subtype_2=="CPTAC_T3&T4"&Cluster=="1",paste0(Subtype_2,"_type2"),                                                    ifelse(Subtype_2=="CPTAC_T3&T4"&Cluster%in%c("4","2","5"),paste0(Subtype_2,"_type1"),as.character(Subtype_2) )))
+                                        
+                          
+umap_plot_df_3$Subtype_3=factor(umap_plot_df_3$Subtype_3,levels=c("Primary&Early_Invasion","T1&T2_Invasion_type1","T1&T2_Invasion_type2","CPTAC_T3&T4_type1","CPTAC_T3&T4_type2"))
+
+
+ggplot(
+  umap_plot_df_3,
+  aes(
+    x = UMAP1,
+    y = UMAP2,
+    shape=as.character(Cluster),
+    color=Subtype_3
+    #shape=stage# label points with different colors for each `subgroup`
+  )
+) +  geom_point( size = 3)
+
+All_samples_singscore_umap=umap_plot_df_3
+```
+
+
+```{r}
+#CPTAC_CH_primary_early=umap_plot_df_3[,c("Cluster","Sample_ID")]%>% subset(Cluster %in% c(2))
+```
+
+
+```{r}
+df_clinical_2=All_samples_singscore_umap[c("Sample_ID","Subtype_3")]%>%left_join(.,CHKIRC_CPTAC_prot_ratio_norm_log_2,by="Sample_ID")%>%left_join(.,CPTAC_CHKIRC_clinic,by="Sample_ID")
+
+df_clinical_2$age=as.integer(df_clinical_2$age)
+
+My_comparision=list(c("T1&T2_Invasion_type1","T1&T2_Invasion_type2"),c("CPTAC_T3&T4_type1", "CPTAC_T3&T4_type2"))
+# df_clinical_2$Subtype_2=factor(df_clinical_2$Subtype_2,levels = c("Primary&Early_Invasion","Invasion_type1","Invasion_type2"))
+Bar_plot_3(df_clinical_2,"age","Subtype_3","Subtype_3",My_comparision)
+
+
+Bar_plot_3(df_clinical_2,"Tumor_size_in_cm","Subtype_3","Subtype_3",My_comparision)
+Bar_plot_3(df_clinical_2,"GIT2","Subtype_3","Subtype_3",My_comparision)
+
+```
+
+
+```{r,fig.height=12,fig.width=12}
+My_comparision=list(c("T1&T2_Invasion_type1","Primary&Early_Invasion"),c("CPTAC_T3&T4_type2","Primary&Early_Invasion" ),  c("CPTAC_T3&T4_type1", "Primary&Early_Invasion"),c("T1&T2_Invasion_type2", "Primary&Early_Invasion"))
+
+Batch_boxplot_2 (Invasion_sig  ,All_samples_singscore_umap,"Subtype_3" ,fillby="Subtype_3",nCol=3,My_comparision)
+```
+
+
+
+
+```{r,fig.height=12,fig.width=14}
+My_comparision=list(c("T1&T2_Invasion_type1","T1&T2_Invasion_type2"),c("CPTAC_T3&T4_type1", "CPTAC_T3&T4_type2"))
+
+Batch_boxplot_2 (Type1_sig,All_samples_singscore_umap,"Subtype_3" ,fillby="Subtype_3",nCol=3,My_comparision)
+
+```
+
+
+```{r,eval=F}
+Pathvisio_data_generate_sig=function (x_list,system_code,type) {
+  plist=list()
+  Name=names(x_list)
+  for (i in 1: length(x_list)) {
+    input=x_list[[i]]
+    output=input[,c("Accession","mean.diff","pvalue")] %>%
+                     mutate (log2FC=ifelse (pvalue<0.05&(mean.diff>0.27|mean.diff< as.numeric("-0.27")), mean.diff,NA)) %>%
+                        mutate(System_code=system_code,Type=type) %>%
+                                 mutate(pvalue=round(pvalue,3)) %>% mutate (log2FC=round(log2FC,2))
+    output2=output[c("log2FC")]
+    rownames(output2)=output[,"Accession"]
+    plist[[Name[i]]]=output2
+  }
+  output3= do.call("cbind",plist)
+  colnames(output3)=names(x_list)
+  return(output3)
+}
+```
+
+# 20 Primary_Early_Invasion samples (paired t test)
+```{r}
+Pro_log_data=read.table(file.path(Rawdata_path,"Proteomics","54_Proteomics_T&N_ratio.txt"),fill=T)
+ 
+Primary_Early_Invasion=All_samples_singscore_umap%>%dplyr::filter(Subtype_3=="Primary&Early_Invasion")
+Primary_Early_Invasion_data=Pro_log_data %>%.[,colnames(.) %in% Primary_Early_Invasion$Sample_ID]
+ 
+ 
+ 
+Ttest=t(Primary_Early_Invasion_data)%>%as.data.frame() %>%apply(2,function (x) (t.test(x))$p.value )%>%unlist()%>%as.data.frame()%>%setNames("pvalue") %>%mutate(padj=p.adjust(pvalue))
+Mean_log=t(Primary_Early_Invasion_data)%>%as.data.frame()%>%apply(2,function (x) mean(x))
+Ttest_padj005=Ttest %>% mutate(Mean_log=Mean_log) %>%dplyr::filter(padj<0.05)
+data_check=Ttest_padj005%>%.[rownames(.)=="GIT2",]
+#save(Pro_log_data,All_samples_singscore_umap,file=file.path(Rdata_path,"CHKIRC_CPTAC_Evolution_data.rdata"   ) )
+```
+```
+
+
+```{r}
+knitr::knit_exit()
+```
+
+
+# 2022 NC chinese CCRCC cohort (T1_Kruskal_test_p001)
+
+
+```{r,include=F}
+# NC_2022_expression_data=readxl::read_excel("/home/yang/tools/R/Project/4_CCRCC_Proteomics/Raw_data/200_NC_CCRCC_proteomics/ccRCC proteome quantification matrix.xlsx",sheet=3 
+NC_2022_expression_rm_NA_data=read.table("/home/yang/tools/R/Project/4_CCRCC_Proteomics/Raw_data/200_NC_CCRCC_proteomics/data.MBR.int.rm_NA.txt",header=T,sep="\t",fill=T)
+
+NC_2022_expression_half_imputation_data=read.table("/home/yang/tools/R/Project/4_CCRCC_Proteomics/Raw_data/200_NC_CCRCC_proteomics/data.MBR.int.half.imputation.txt",header=T,sep="\t",fill=T)
+
+length(setdiff(colnames(CHKIRC_CPTAC_prot_ratio_norm_log_2),NC_2022_expression_rm_NA_data$Gene.Symbol))
+length(setdiff(colnames(CHKIRC_CPTAC_prot_ratio_norm_log_2),NC_2022_expression_half_imputation_data$Gene.Symbol))
+#
+NC_2022_imputation_expression_data_matrix=NC_2022_expression_half_imputation_data [,c(3:466)]
+rownames(NC_2022_imputation_expression_data_matrix)=NC_2022_expression_half_imputation_data$Gene.Symbol
+
+Normal_samples=NC_2022_imputation_expression_data_matrix %>% .[,grepl("TA",colnames(.) )]
+Tumor_samples=NC_2022_imputation_expression_data_matrix %>% .[,grepl("_T$",colnames(.) )]
+
+Data_match=data.frame(Normal_ID=colnames(Normal_samples)) %>%mutate(sample_ID=gsub("_TA","" ,Normal_ID)) %>%arrange(sample_ID) %>%mutate(Tumor_ID=paste0(sample_ID,"_T"))
+
+Normal_samples_sort=Normal_samples[,Data_match$Normal_ID]
+Tumor_samples_sort=Tumor_samples[,Data_match$Tumor_ID]
+
+colnames(Tumor_samples_sort)==Data_match$Tumor_ID
+colnames(Normal_samples_sort)==Data_match$Normal_ID
+
+# select common genes in other two cohorts
+NC_CCRCC_Pro_ratio=as.data.frame(Tumor_samples_sort/Normal_samples_sort)%>%.[rownames(.) %in% c(colnames(CHKIRC_CPTAC_prot_ratio_norm_log),"ACTB"),] 
+
+NC_CCRCC_Pro_ratio_norm=apply(NC_CCRCC_Pro_ratio,2,function(x) output=x/x["ACTB"] ) %>%t() %>%as.data.frame()
+NC_CCRCC_Pro_ratio_norm_log=log2(NC_CCRCC_Pro_ratio_norm)
+NC_CCRCC_Pro_ratio_norm_log$ACTB
+Stage_trans=data.frame(Stage=c("I","II","III","IV","V"),stage2=c("pT1","pT2","pT3","pT4","pT5"))
+
+NC_CCRCC_clinic=readxl::read_excel(file.path("/home/yang/tools/R/Project/4_CCRCC_Proteomics/Raw_data/200_NC_CCRCC_proteomics","Clincal_data.xlsx"  ),sheet=2) %>%rename(Sample_ID="ccRCC No.",Tumor_size_in_cm=`Tumor Size in  cm`) %>%mutate(Sample_ID=gsub("_00","_",Sample_ID  ))%>%mutate(Sample_ID=gsub("_0","_",Sample_ID  )) %>% mutate(Sample_ID=paste0(Sample_ID,"_T"  ))%>% left_join(.,Stage_trans) 
+ 
+ NC_CCRCC_clinic_summary=NC_CCRCC_clinic%>%group_by(stage2) %>%summarise(n=n())
+
+
+```
+## NC CCRCC subtypes based on DEPs of Invasion vs non_invasion
+
+```{r,include=F}
+
+# ncol(NC_CCRCC_Pro_ratio_norm_log)
+# NC_ccrcc_singscore_list=singcore_GSEA(t(NC_CCRCC_Pro_ratio_norm_log), All_pathway_list)
+# # length(CHKIRC_CPTAC_singscore_list)
+# # 
+# NC_ccrcc_singscore=Singscore_list_combine(NC_ccrcc_singscore_list,232)
+# write.csv(NC_ccrcc_singscore,file=file.path("/home/yang/tools/R/Project/4_CCRCC_Proteomics/Raw_data/200_NC_CCRCC_proteomics", "232_CCRCC_singscore.csv"  ))
+# nrow(NC_ccrcc_singscore)
+ 
+
+NC_ccrcc_singscore=read.csv(file.path("/home/yang/tools/R/Project/4_CCRCC_Proteomics/Raw_data/200_NC_CCRCC_proteomics", "232_CCRCC_singscore.csv"  ),row.names = 1)
+```
+
+## USING T1_Kruskal_test_p001 FOR UMAP and kmeans
+
+```{r}
+set.seed(1234)
+NC_CCRCC_clinic_T1_T2=NC_CCRCC_clinic%>% dplyr::filter(Stage =="I" | Stage=="II") 
+  set.seed(1234)
+NC_ccrcc_singscore_T1_T2=NC_ccrcc_singscore %>% .[rownames(.)%in% NC_CCRCC_clinic_T1_T2$Sample_ID, ]
+NC_ccrcc_umap_T1_T2=Kmeans_umap_by_genelist(t(NC_ccrcc_singscore_T1_T2),6,T1_Kruskal_test_p001$SYMBOL,NC_CCRCC_clinic)
+nrow(t(NC_ccrcc_singscore))
+
+ggplot(
+  NC_ccrcc_umap_T1_T2,
+  aes(
+    x = UMAP1,
+    y = UMAP2,
+    color=as.character(Cluster),
+    shape=stage2
+    #shape=stage# label points with different colors for each `subgroup`
+  )
+) +  geom_point( size = 3)
+
+NC_ccrcc_umap_T1_T2_rm=NC_ccrcc_umap_T1_T2
+
+```
+
+
+```{r,fig.height=20,fig.width=15,eval=F}
+Key_path_select=c("Wiki_Glycolysis_and_Gluconeogenesis_singscore",   "C2CGP_REACTOME_AUTOPHAGY_singscore","HALLMARK_MTORC1_SIGNALING_singscore","C2CGP_KEGG_CITRATE_CYCLE_TCA_CYCLE_singscore",
+"C2CGP_REACTOME_CELL_CYCLE_CHECKPOINTS_singscore","Wiki_Mitochondrial_LC_Fatty_Acid_Beta_Oxidation_singscore","Wiki_Complement_Activation_singscore","HALLMARK_APOPTOSIS_singscore","Wiki_Apoptosis_singscore","C2CGP_REACTOME_PI3K_AKT_SIGNALING_IN_CANCER_singscore","Wiki_Oxidative_phosphorylation_singscore","HALLMARK_EPITHELIAL_MESENCHYMAL_TRANSITION_singscore","C2CGP_KEGG_ECM_RECEPTOR_INTERACTION_singscore")
+
+
+# setdiff(Key_path_select,colnames(All_samples_singscore_umap))
+# colnames(All_samples_singscore_umap)[grepl("Wiki_Cell",colnames(All_samples_singscore_umap))]
+
+
+
+Batch_boxplot(Key_path_select,NC_ccrcc_umap_T1_T2_rm,"Cluster","Cluster",nCol=3 )
+```
+
+```{r,eval=F}
+Compare_list=list(c("Primary&Early_Invasion","Invasion_type1"), c("Primary&Early_Invasion","Invasion_type2"),c("Invasion_type1","Invasion_type2"))
+
+NC_ccrcc_Pro_ratio_t1_t2_cluster=NC_CCRCC_Pro_ratio_norm_log%>%tibble::rownames_to_column(.,var="Sample_ID") %>%right_join(NC_ccrcc_umap_T1_T2_rm[,c("Sample_ID","Cluster")])
+
+Bar_plot_3(NC_ccrcc_Pro_ratio_t1_t2_cluster, "GIT2", "Cluster","Cluster",Compare_list)
+```
+
+```{r,fig.height=6,fig.width=8}
+NC_ccrcc_Pro_ratio_t1_t2_cluster=NC_CCRCC_Pro_ratio_norm_log%>%tibble::rownames_to_column(.,var="Sample_ID") %>%right_join(NC_ccrcc_umap_T1_T2_rm[,c("Sample_ID","Cluster")])
+Compare_list=list(c("Primary&Early_Invasion","Invasion_type1"), c("Primary&Early_Invasion","Invasion_type2"),c("Invasion_type1","Invasion_type2"))
+Cluster_anno=data.frame(Cluster=as.character(c(1:6)),Subtype_NC=factor(c("Invasion_type2","Invasion_type1","Primary&Early_Invasion", "Other","Other","Primary&Early_Invasion"),levels=c("Primary&Early_Invasion","Invasion_type1","Invasion_type2")))
+NC_ccrcc_umap_T1_T2_RM_anno=NC_ccrcc_umap_T1_T2_rm%>%left_join(.,Cluster_anno)%>%dplyr::filter(Subtype_NC!="Other")
+ 
+
+ggplot(
+  NC_ccrcc_umap_T1_T2_RM_anno,
+  aes(
+    x = UMAP1,
+    y = UMAP2,
+    color=as.character(Subtype_NC),
+    # shape=stage2
+    #shape=stage# label points with different colors for each `subgroup`
+  )
+) +  geom_point( size = 3)
+```
+
+
+```{r,fig.height=6,fig.width=8}
+NC_ccrcc_Pro_ratio_t1_t2_cluster_anno=NC_ccrcc_Pro_ratio_t1_t2_cluster %>%right_join(.,NC_ccrcc_umap_T1_T2_RM_anno)
+Bar_plot_3(NC_ccrcc_Pro_ratio_t1_t2_cluster_anno, "GIT2", "Subtype_NC","Subtype_NC",Compare_list)
+
+```
+
+
+```{r,fig.height=14,fig.width=15}
+Compare_list=list(c("Primary&Early_Invasion","Invasion_type1"), c("Primary&Early_Invasion","Invasion_type2"),c("Invasion_type1","Invasion_type2"))
+Batch_boxplot_2(Invasion_sig,NC_ccrcc_umap_T1_T2_RM_anno,"Subtype_NC","Subtype_NC",nCol=3,Compare_list )
+
+```
+
+```{r,fig.height=16}
+# Type2 signature Type2_up_sig_keypath
+
+Compare_list=list(c("Primary&Early_Invasion","Invasion_type1"), c("Primary&Early_Invasion","Invasion_type2"),c("Invasion_type1","Invasion_type2"))
+Batch_boxplot_2( Type1_sig ,NC_ccrcc_umap_T1_T2_RM_anno,"Subtype_NC","Subtype_NC",nCol=3,Compare_list )
+
+
+```
+
+
+```{r,fig.height=10,fig.width=8}
+NC_ccrcc_Pro_ratio_t1_t2_anno=NC_CCRCC_Pro_ratio_norm_log%>%tibble::rownames_to_column(.,var="Sample_ID") %>%right_join(NC_ccrcc_umap_T1_T2_RM_anno[,c("Sample_ID","Subtype_NC")])
+
+clin_T1_T2_subtype <-NC_CCRCC_clinic[,c("Sample_ID","Live Status","OS(month)","Stage","Progression","PFS(Month)")]  %>% rename(vital_status="Live Status",Month="OS(month)",PFS_month="PFS(Month)") %>% mutate(vital_status=gsub("death","dead",vital_status)) %>% mutate(vital_status=gsub("living","alive",vital_status))  %>%
+   mutate(days_to_death=ifelse(vital_status=="dead",as.integer(Month*30.5),NA)) %>% mutate(days_to_last_follow_up=ifelse(vital_status=="alive",as.integer(Month*30.5),NA))%>%right_join(.,NC_ccrcc_Pro_ratio_t1_t2_anno[,c("Sample_ID","Subtype_NC")]) %>% mutate(Status=ifelse(vital_status=="dead",1,0 )) %>%mutate(Status_pfs=ifelse(Progression=="Yes",1,0  ))  %>%as.data.frame()
+
+#clin_T1_T2_subtype_1_2=clin_T1_T2_subtype  %>% dplyr::filter(grepl("type",Subtype_NC))
+library(survival)
+fit<- survival::survfit(Surv(Month, Status) ~ Subtype_NC, data = clin_T1_T2_subtype)
+# Drawing survival curves
+survminer::ggsurvplot(fit,pval = TRUE,risk.table =T)
+```
+
+
+## T3 AND T4
+
+```{r}
+NC_ccrcc_umap=Kmeans_umap_by_genelist(t(NC_ccrcc_singscore),6,T1_Kruskal_test_p001$SYMBOL,NC_CCRCC_clinic)
+nrow(t(NC_ccrcc_singscore))
+
+NC_ccrcc_umap_subtype=NC_ccrcc_umap%>% left_join(., clin_T1_T2_subtype[,c("Sample_ID","Subtype_NC")])%>%mutate(Subtype_NC=ifelse(is.na(Subtype_NC),"NC_T3_T4",as.character(Subtype_NC)))
+
+ggplot(
+  NC_ccrcc_umap_subtype,
+  aes(
+    x = UMAP1,
+    y = UMAP2,
+    color=as.character(Cluster),
+    shape=Subtype_NC
+    #shape=stage# label points with different colors for each `subgroup`
+  )
+) +  geom_point( size = 3)
+```
+
+
+```{r,fig.height=6,fig.width=8}
+# remove cluster 2
+set.seed(1234)
+
+# setdiff(Key_path_select,colnames(All_samples_singscore_umap))
+# colnames(All_samples_singscore_umap)[grepl("Wiki_Cell",colnames(All_samples_singscore_umap))]
+
+# NC_ccrcc_umap_rmcluster2=NC_ccrcc_umap%>%dplyr::filter(Cluster!="2")
+
+NC_ccrcc_umap_subtype2=NC_ccrcc_umap_subtype%>% mutate(Subtype_NC_2=ifelse((Cluster=="1")&Subtype_NC=="NC_T3_T4","NC_T3_T4_Invasion_type2",ifelse((Cluster=="2"|Cluster=="5")&Subtype_NC=="NC_T3_T4","NC_T3_T4_Invasion_type1", ifelse((Cluster=="6")&Subtype_NC=="NC_T3_T4","Undefined_NC_T3_T4",  Subtype_NC )) ) )%>%mutate(Subtype_NC_2=ifelse(Subtype_NC_2=="NC_T3_T4","Undefined_NC_T3_T4",Subtype_NC_2 ))
+                                                                                                                                            
+# Batch_boxplot(Key_path_select,NC_ccrcc_umap_RM,"Cluster","Cluster",nCol=3 )
+ 
+
+ggplot(
+  NC_ccrcc_umap_subtype2,
+  aes(
+    x = UMAP1,
+    y = UMAP2,
+    color=Subtype_NC_2
+    # color=as.character(Cluster),
+    # shape=Subtype_NC
+    #shape=stage# label points with different colors for each `subgroup`
+  )
+) +  geom_point( size = 3)
+
+```
+
+
+```{r,fig.height=25,fig.width=15}
+NC_ccrcc_umap_subtype2_rm=NC_ccrcc_umap_subtype2%>%dplyr::filter(Subtype_NC_2!="Undefined_NC_T3_T4")
+NC_ccrcc_umap_subtype2_rm%>%group_by(Subtype_NC_2) %>%summarise(n=n())
+```
+
+
+```{r,fig.height=14}
+NC_ccrcc_umap_subtype2_rm$Subtype_NC_2=factor(NC_ccrcc_umap_subtype2_rm$Subtype_NC_2,levels=c("Primary&Early_Invasion","Invasion_type1","Invasion_type2","NC_T3_T4_Invasion_type1","NC_T3_T4_Invasion_type2"))
+# 
+# Cluster_anno=data.frame(Cluster=as.character(c(1:8)),Subtype_NC=factor(c("Primary&Early_Invasion","Invasion_type1","Invasion_type1","Invasion_type1","Primary&Early_Invasion","","Invasion_type2","Primary&Early_Invasion"),levels=c("Primary&Early_Invasion","Invasion_type1","Invasion_type2")))
+
+
+Compare_list=list(c("NC_T3_T4_Invasion_type1","NC_T3_T4_Invasion_type2"),c("Invasion_type1","Invasion_type2"))
+Batch_boxplot_2(Type1_sig,NC_ccrcc_umap_subtype2_rm,"Subtype_NC_2","Subtype_NC_2",nCol=3,Compare_list )
+
+```
+
+
+
+### T3 and T4 subtype survival
+```{r}
+# p0.025
+clin <-NC_CCRCC_clinic[,c("Sample_ID","Live Status","OS(month)","Stage","Progression","PFS(Month)")]  %>% rename(vital_status="Live Status",Month="OS(month)",PFS_month="PFS(Month)") %>% mutate(vital_status=gsub("death","dead",vital_status)) %>% mutate(vital_status=gsub("living","alive",vital_status))  %>%
+   mutate(days_to_death=ifelse(vital_status=="dead",as.integer(Month*30.5),NA)) %>% mutate(days_to_last_follow_up=ifelse(vital_status=="alive",as.integer(Month*30.5),NA))%>%right_join(.,NC_ccrcc_umap_subtype2_rm[,c("Sample_ID","Subtype_NC_2")]) %>% mutate(Status=ifelse(vital_status=="dead",1,0 )) %>%mutate(Status_pfs=ifelse(Progression=="Yes",1,0  ))  %>%as.data.frame()
+
+```
+
+```{r,fig.height=6,fig.width=8}
+NC_CCRCC_Pro_ratio_norm_log_2=NC_CCRCC_Pro_ratio_norm_log%>%tibble::rownames_to_column(.,var="Sample_ID")
+
+Compare_list=list(c("NC_T3_T4_Invasion_type1","NC_T3_T4_Invasion_type2"),c("Invasion_type1","Invasion_type2"))
+
+NC_ccrcc_Pro_ratio_t3_t4_cluster_anno=NC_ccrcc_umap_subtype2_rm %>%left_join(.,NC_CCRCC_Pro_ratio_norm_log_2)
+Bar_plot_3(NC_ccrcc_Pro_ratio_t3_t4_cluster_anno, "GIT2", "Subtype_NC_2","Subtype_NC_2",Compare_list)
+
+```
+
+```{r,fig.height=8,fig.width=12}
+ 
+clin_T3_T4_subytpe=clin%>%dplyr::filter(grepl("T3",Subtype_NC_2))
+fit<- survfit(Surv(Month, Status) ~ Subtype_NC_2, data = clin_T3_T4_subytpe)
+# Drawing survival curves
+survminer::ggsurvplot(fit,pval = TRUE,title="T3_T4",risk.table = T)
+```
+
+
+## Type1 and Type 2 survival (T1-T4 combination)
+```{r,fig.height=8,fig.width=10}
+clin_subtype=clin%>%mutate(Subtype_NC_3=ifelse(grepl("type1", Subtype_NC_2),"Invasion_type1",ifelse(grepl("type2", Subtype_NC_2),"Invasion_type2",as.character(Subtype_NC_2 )))) 
+clin_subtype$Subtype_NC_3=factor(clin_subtype$Subtype_NC_3,levels=c("Primary&Early_Invasion", "Invasion_type1" , "Invasion_type2" ))
+fit<- survfit(Surv(Month, Status) ~ Subtype_NC_3, data = clin_subtype)
+nrow(clin_subtype)
+# Drawing survival curves
+survminer::ggsurvplot(fit,pval = TRUE,title="Invasion_type",risk.table = T)                           
+```
+
+
+
+```{r,fig.height=10,fig.width=12}
+NC_ccrcc_umap_all_anno=NC_ccrcc_umap_subtype2_rm %>%left_join(.,clin_subtype[,c("Sample_ID","Subtype_NC_3")])
+
+Compare_list=list(c("Primary&Early_Invasion","Invasion_type1"), c("Primary&Early_Invasion","Invasion_type2"),c("Invasion_type1","Invasion_type2"))
+Batch_boxplot_2(Type1_sig,NC_ccrcc_umap_all_anno,"Subtype_NC_3","Subtype_NC_3",nCol=3,Compare_list )
+
+```
+
+
+```{r,fig.height=6,fig.width=8}
+NC_CCRCC_Pro_ratio_norm_log_2=NC_CCRCC_Pro_ratio_norm_log%>%tibble::rownames_to_column(.,var="Sample_ID")
+
+Compare_list=list(c("Invasion_type1","Invasion_type2"),c("Invasion_type1","Primary&Early_Invasion"))
+
+NC_ccrcc_Pro_ratio_t3_t4_cluster_anno=clin_subtype %>%left_join(.,NC_CCRCC_Pro_ratio_norm_log_2)%>%as.data.frame()
+ggplot(na.omit(NC_ccrcc_Pro_ratio_t3_t4_cluster_anno[,c("Subtype_NC_3", "GIT2")]),aes(x=Subtype_NC_3,y=GIT2))+geom_violin()+ggpubr::stat_compare_means(comparisons =  my_comparisons)
+
+Bar_plot_3(NC_ccrcc_Pro_ratio_t3_t4_cluster_anno, "GIT2", "Subtype_NC_3","Subtype_NC_3",Compare_list)
+ NC_ccrcc_Pro_ratio_t3_t4_cluster_anno$Subtype_NC_3
+```
+
+
+```{r}
+knitr::knit_exit()
+```
+
+
+```{r,fig.height=18,fig.width=10}
+
+NC_ccrcc_umap_all_anno=NC_ccrcc_umap_subtype2_rm %>%left_join(.,clin_subtype[,c("Sample_ID","Subtype_NC_3")])
+NC_ccrcc_umap_all_anno$Subtype_NC_3
+Compare_list=list(c("Primary&Early_Invasion","Invasion_type1"),c("Primary&Early_Invasion","Invasion_type2"),c("Invasion_type1","Invasion_type2"))
+Batch_boxplot_2(Type2_up_sig_keypath,NC_ccrcc_umap_all_anno,"Subtype_NC_3","Subtype_NC_3",nCol=3,Compare_list )
+
+```
+
+##############################################################################################################################3
+
+

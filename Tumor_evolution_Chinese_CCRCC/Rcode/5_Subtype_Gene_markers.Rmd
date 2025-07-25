@@ -1,0 +1,1200 @@
+---
+title: "5_Subtype_genemarkers_for_CCRCC"
+author: "`r config::get(file = 'config.yml')$document$author`"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    keep_tex: true
+    latex_engine: pdflatex
+    fig_caption: yes
+    highlight: haddock
+    number_sections: yes
+
+knit: (
+  function(inputFile, encoding) {
+    config=config::get(file = 'config.yml') 
+    
+    pSubTitle <- "5_Subtype_genemarkers_for_CCRCC.pdf"
+    
+    if (!dir.exists(config$Report)) {
+      dir.create(config$Report, recursive = TRUE)
+    }
+    
+    base_output_dir <- config$Report
+    
+    DIR=file.path(base_output_dir)
+    
+    rmarkdown::render(
+      input = inputFile,
+      encoding = encoding,
+      output_file = pSubTitle,
+      output_dir = DIR)
+    }
+  )
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F,cache = F,warning=F,message = F,cache=F, include = F)
+```
+
+
+```{r,include=F}
+rm(list = ls(all.names = TRUE))
+```
+
+# Define your own config
+```{r, include=FALSE}
+getwd()
+config <- config::get(file = 'config.yml')
+# 
+Working_path=config$Path
+email=config$Email
+Authtoken=config$Token_file
+knitr::opts_chunk$set(echo = F,warnings =F, message=F,include=F)
+options(knitr.table.format = 'markdown',encoding = 'UTF-8',warnings =F, message=F ) 
+# Check and create output directory if it doesn't exist
+output_dir <- file.path(Working_path, "Data_preparation")
+if (!dir.exists(output_dir)) {
+  dir.create(output_dir, recursive = TRUE)
+}
+Reference_path=config$Reference_path
+
+dir(Reference_path)
+# load function
+source("Rfunction.R" ) 
+```
+
+
+```{r,include=F}
+Rcode_path=getwd()
+Path=Working_path
+Rdata_path=file.path(Path,"Rdata")
+Rawdata_path=file.path(Path,"Rawdata")
+Out_table_path=file.path(Path,"Out","table")
+dir.create(Out_table_path,recursive = T)
+#NC_Rawdata_path=file.path(Path,"Raw_data","NC_230")
+```
+
+
+```{r,include=F}
+library(dplyr)
+
+library(ggplot2)
+
+```
+
+```{r}
+load(file.path(Reference_path,"Human_GSEA","GO_KEGGP_WP_C2CGP_Reactome_pathway_list.rdata"))
+cgwtools::lsdata(file.path(Reference_path,"Human_GSEA","GO_KEGGP_WP_C2CGP_Reactome_pathway_list.rdata"))
+```
+
+# CHKIRC data (54 samples)
+
+```{r,include=F}
+# load singscore data
+#load(file.path(Rawdata_path,"Two_cohorts_normalized_singscore.data"))
+#KIRC_norm_singscore=Two_cohorts_singscore_norm%>% .[!grepl("C3",rownames(.)),] #C3 is for CPTAC data
+Pro_log_data=read.table(file.path(Rawdata_path,"CHKIRC","Proteomics","54_Proteomics_T&N_ratio.txt"),fill=T)
+clinical_54_data_2=read.table(file.path(Rawdata_path, "CHKIRC","Clinic","54_Clinical_data.txt"),header = T,check.names = F)
+Invasion_anno=clinical_54_data_2%>%dplyr::filter(Capsular_invasion=="Y" )
+Subtypes=read.csv(file.path(Out_table_path,"CHKIRC_subtype_clinial.csv"))
+
+Subtype_pathways=c("HALLMARK_EPITHELIAL_MESENCHYMAL_TRANSITION" ,"WP_FOCAL_ADHESION_PI3KAKTMTORSIGNALING_PATHWAY","WP_TGFBETA_RECEPTOR_SIGNALING_IN_SKELETAL_DYSPLASIAS","HALLMARK_MYOGENESIS","WP_PI3KAKT_SIGNALING_PATHWAY" ,"WP_COMPLEMENT_SYSTEM" ,"WP_GLYCOLYSIS_AND_GLUCONEOGENESIS"   ,"WP_MITOCHONDRIAL_LONG_CHAIN_FATTY_ACID_BETAOXIDATION"    )
+
+
+Gene_list=list()
+for ( i in  Subtype_pathways){
+  
+  Pahtway_name=gsub("_Normalized_singscore","" ,i)
+  Gene_name=GSEA_pathway_list[[Pahtway_name]]
+  Gene_list[[i]]=Gene_name
+}
+
+Gene_all=unlist(Gene_list)%>%unique()
+
+Pro_log_data_from_pathway=Pro_log_data%>%.[rownames(.) %in%Gene_all, ]
+Pro_log_data_from_pathway2=Pro_log_data_from_pathway%>%t()%>%as.data.frame()%>%mutate(Sample_ID=rownames(.))%>%left_join(.,Subtypes[,c("Sample_ID","Subtype")])%>%arrange(Subtype)%>%mutate(Subtype2=ifelse(grepl("type1",Subtype ),"CHKIRC_Type1","CHKIRC_Type2"))
+rownames(Pro_log_data_from_pathway2)=Pro_log_data_from_pathway2$Sample_ID
+Pro_log_data_from_pathway2$Subtype2
+auc_list=list()
+for (i in colnames(Pro_log_data_from_pathway2)){
+  if (i %in% Gene_all){
+   roc.gene <- pROC::roc( Pro_log_data_from_pathway2[,"Subtype2"],Pro_log_data_from_pathway2[,i])
+  # Get the full AUC
+   auc_list[[i]]=pROC::auc(roc.gene)%>%as.data.frame()%>%setNames(i)
+  }
+
+
+   
+  
+}
+Auc_all=do.call("cbind",auc_list)
+CHKIRC_Auc_sig=Auc_all %>%t()%>%as.data.frame()%>%setNames("AUC")%>%dplyr::filter(AUC>0.6)%>%arrange(AUC)
+```
+
+# CPTAC 
+
+```{r,include=F}
+Pro_data=read.table(file.path(Rawdata_path,"CPTAC","Proteomics","CPTAC3_CCRCC.tumor2normal.txt"),fill=T,header=T,sep="\t" )%>%na.omit()
+colnames(Pro_data)=gsub("\\.","_",colnames(Pro_data))
+Pro_data_2=Pro_data%>%dplyr::filter(!Gene%in%c("Mean","Median","StdDev"))%>%matrix.please()%>%t()%>%as.data.frame()%>%na.omit()
+# Tumor/normal
+Pro_log_data=log2(Pro_data_2+1)
+Pro_log_data_rm_na=Pro_log_data%>%na.omit()%>%as.data.frame()
+
+Sample_anno=read.csv(file.path(Rawdata_path,"CPTAC","Proteomics","CPTAC_clinical_lable.csv"))
+Sample_anno$Sample_ID=gsub("-","_",Sample_anno$Sample_ID)
+
+
+#CPTAC_clinic_paried=CPTAC_clinic %>% dplyr::filter(tumor_normal=="TN")%>%mutate (stage=ifelse(grepl( "pT1",pathologic_staging_primary_tumor_pT),"T1","T2-T4"))  %>% mutate(stage2=gsub("a|b","",pathologic_staging_primary_tumor_pT)) %>%
+#  dplyr::rename(Sample_ID="case_id",diameter="tumor_size_in_cm")%>% .[,c("Sample_ID","age","stage","stage2","diameter")]  %>%mutate(Capsular_invasion="Unknown")
+#setdiff(CPTAC_clinic_paried$Sample_ID,colnames(CPTAC_proteomics_ratio))
+
+#CPTAC_proteomics_ratio_log=log2(CPTAC_proteomics_ratio)
+
+# CPTAC_sig_UMAP=read.csv(file.path(Rawdata_path,"CPTAC","Proteomics","79_CPTAC_subtypes_UMAP_sig_pathways.csv"))
+
+Pro_log_data_from_pathway=Pro_log_data%>%t()%>%as.data.frame()%>%.[rownames(.) %in%Gene_all, ]
+
+CPTAC_Subtypes=read.csv(file.path(Out_table_path,"CPTAC_subtypes.csv"))
+Pro_log_data_from_pathway2=Pro_log_data_from_pathway%>%na.omit()%>%t()%>%as.data.frame()%>%mutate(Sample_ID=rownames(.))%>%left_join(.,CPTAC_Subtypes[,c("Sample_ID","Subtype2")])%>%arrange(Subtype2)
+rownames(Pro_log_data_from_pathway2)=Pro_log_data_from_pathway2$Sample_ID
+Pro_log_data_from_pathway2$Subtype2
+
+auc_list=list()
+
+for (i in colnames(Pro_log_data_from_pathway2)){
+  if (i %in% Gene_all){
+   roc.gene <- pROC::roc( Pro_log_data_from_pathway2[,"Subtype2"],Pro_log_data_from_pathway2[,i])
+  # Get the full AUC
+   auc_list[[i]]=pROC::auc(roc.gene)%>%as.data.frame()%>%setNames(i)
+  }
+
+
+   
+  
+}
+Auc_all=do.call("cbind",auc_list)
+CPTAC_Auc_sig=Auc_all %>%t()%>%as.data.frame()%>%setNames("AUC")%>%dplyr::filter(AUC>0.6)%>%arrange(AUC)
+
+
+```
+
+# NC data
+
+```{r,include=F}
+# load(file.path(Rawdata_path,"NC_230", "T2_T4_subtype_clin.rdata")  )
+# 
+# NC_sig_UMAP=read.csv(file.path(Rawdata_path,"NC_230","232_NC_subtypes_UMAP_sig_pathways.csv"))
+
+NC_2022_expression_half_imputation_data=read.table(file.path(Rawdata_path,"200_NC_CCRCC_proteomics/data.MBR.int.half.imputation.txt"),header=T,sep="\t",fill=T)
+
+NC_2022_imputation_expression_data_matrix=NC_2022_expression_half_imputation_data [,c(3:466)]
+rownames(NC_2022_imputation_expression_data_matrix)=NC_2022_expression_half_imputation_data$Gene.Symbol
+
+Normal_samples=NC_2022_imputation_expression_data_matrix %>% .[,grepl("TA",colnames(.) )]
+Tumor_samples=NC_2022_imputation_expression_data_matrix %>% .[,grepl("_T$",colnames(.) )]
+
+Data_match=data.frame(Normal_ID=colnames(Normal_samples)) %>%mutate(sample_ID=gsub("_TA","" ,Normal_ID)) %>%arrange(sample_ID) %>%mutate(Tumor_ID=paste0(sample_ID,"_T"))
+
+Normal_samples_sort=Normal_samples[,Data_match$Normal_ID]
+Tumor_samples_sort=Tumor_samples[,Data_match$Tumor_ID]
+
+colnames(Tumor_samples_sort)==Data_match$Tumor_ID
+colnames(Normal_samples_sort)==Data_match$Normal_ID
+
+# select common genes in other two cohorts
+NC_CCRCC_Pro_ratio=as.data.frame(Tumor_samples_sort/Normal_samples_sort)
+NC_CCRCC_Pro_ratio_log=NC_CCRCC_Pro_ratio%>%log2()%>%as.data.frame()
+
+NC200_subtypes=read.csv(file.path(Out_table_path,"NC200_subtypes.csv"))
+Pro_log_data_from_pathway=NC_CCRCC_Pro_ratio_log%>%.[rownames(.) %in%Gene_all, ]
+
+Pro_log_data_from_pathway2=Pro_log_data_from_pathway%>%t()%>%as.data.frame()%>%mutate(Sample_ID=rownames(.))%>%left_join(.,NC200_subtypes[,c("Sample_ID","Subtype2")])%>%arrange(Subtype2)
+rownames(Pro_log_data_from_pathway2)=Pro_log_data_from_pathway2$Sample_ID
+Pro_log_data_from_pathway2$Subtype2
+
+auc_list=list()
+for (i in colnames(Pro_log_data_from_pathway2)){
+  if (i %in% Gene_all){
+   roc.gene <- pROC::roc( Pro_log_data_from_pathway2[,"Subtype2"],Pro_log_data_from_pathway2[,i])
+  # Get the full AUC
+   auc_list[[i]]=pROC::auc(roc.gene)%>%as.data.frame()%>%setNames(i)
+  }
+
+
+   
+  
+}
+Auc_all=do.call("cbind",auc_list)
+NC200_Auc_sig=Auc_all %>%t()%>%as.data.frame()%>%setNames("AUC")%>%dplyr::filter(AUC>0.6)%>%arrange(AUC)
+```
+
+# Common marker genes in three cohort with mean AUC >0.8
+```{r,include=T}
+Common_sig_genes_all= Reduce(intersect,list(rownames(NC200_Auc_sig),rownames(CHKIRC_Auc_sig),rownames(CPTAC_Auc_sig)))
+
+Common_AUC_sig=lapply(list (CHKIRC_Auc_sig,CPTAC_Auc_sig,NC200_Auc_sig),function(x) x%>%mutate(genes=rownames(.)) %>%dplyr::filter(genes%in%Common_sig_genes_all) %>%arrange(genes)%>%select(-genes))%>%do.call("cbind",.)%>%setNames(c("CHKIRC_AUC","CPTAC_AUC","NC_AUC"))
+
+Common_sig_genes_filter=Common_AUC_sig%>%mutate(mean_AUC=apply(.,1,mean))%>%arrange(desc(mean_AUC))%>%dplyr::filter(mean_AUC>0.8)
+
+Common_sig_genes=rownames(Common_sig_genes_filter)
+Common_path=list("Subtype_associated_genes"=Common_sig_genes)
+write.csv(Common_sig_genes_filter,file=file.path(Out_table_path,"Gene_signature_for_CCRCC_subtypes"))
+knitr::kable(Common_sig_genes_filter,caption = "Genes with mean AUV >0.78 in three cohorts ")%>%kableExtra::kable_styling(latex_options = "hold_position")
+```
+
+
+
+## Common sig genes in CHKIRC cohort
+
+```{r,fig.width=12,fig.height=16}
+Genes_select=Common_sig_genes
+Pro_log_data=read.table(file.path(Rawdata_path,"CHKIRC","Proteomics","54_Proteomics_T&N_ratio.txt"),fill=T)
+Pro_log_data_from_pathway=Pro_log_data%>%as.data.frame()%>%.[rownames(.) %in%Gene_all, ]
+Pro_log_data_from_pathway2=Pro_log_data_from_pathway%>%t()%>%as.data.frame()%>%mutate(Sample_ID=rownames(.))%>%left_join(.,Subtypes [,c("Sample_ID","Subtype")])%>%arrange(Subtype)%>%mutate(Subtype2=ifelse(grepl("type1",Subtype ),"CHKIRC_Type1","CHKIRC_Type2"))
+rownames(Pro_log_data_from_pathway2)=Pro_log_data_from_pathway2$Sample_ID
+Pro_log_data_from_pathway2$Subtype2
+
+Pro_log_data_from_pathway2$Subtype
+Annotation=Pro_log_data_from_pathway2[,c("Sample_ID","Subtype")]%>%arrange(Subtype)%>%matrix.please()%>%as.data.frame()%>%setNames("Subtype")
+Annotation$Subtype=factor(Annotation$Subtype,levels=c("CHKIRC_subtype1","CHKIRC_subtype2" ))
+subtype_color2=cbp1[c(3,5)]
+names(subtype_color2)=c("CHKIRC_subtype1","CHKIRC_subtype2" )
+Pro_log_data_from_pathway_t=Pro_log_data_from_pathway2%>%t()%>%as.data.frame()
+Annotation_color=list(Subtype=c("CHKIRC_subtype1"=as.character(subtype_color2[1]), "CHKIRC_subtype2"=as.character(subtype_color2[2])))
+S1=pheatmap_singscore(Genes_select,Pro_log_data_from_pathway2,Annotation,Annotation_color)
+
+Gene_select_anno= Pro_log_data_from_pathway2[,colnames(Pro_log_data_from_pathway2) %in% Genes_select] %>%na.omit()%>%as.data.frame()
+#%>%.[,rownames(Annotation)]
+
+
+
+
+Sig_gene_expression=Pro_log_data%>%.[Common_sig_genes,]%>%t() %>%as.data.frame()
+set.seed(12345)
+UMAP_data=UMAP_output(Sig_gene_expression)%>%left_join(.,Subtypes[,c("Sample_ID","Subtype")])
+
+P1=UMAP_plot(UMAP_data,shape_label="",color_label="Subtype",color_defination=subtype_color2)
+ 
+Type1_anno=Subtypes%>%dplyr::filter(grepl("type1",Subtype))
+Type2_anno=Subtypes%>%dplyr::filter(grepl("type2",Subtype))
+Primary_type1_proteomics_data=Pro_log_data
+Ttest_list=list()
+#Subtype=unique(sig_pathways_umap_2$Subtype2)%>%sort()
+
+
+Test_list=list()
+for (  i in Common_sig_genes){
+  Group1=Type1_anno$Sample_ID
+  Group2=Type2_anno$Sample_ID
+  Data=Pro_log_data%>%.[i,]
+  A_data=Data[,Group1]
+  B_data=Data[,Group2]
+  Test=Wilcox_test_singscore(Data,Group1,Group2)
+  #%>%.[,c("pvalue","Diff")]%>%dplyr::rename(log2Foldchange=Diff)
+  Test_list[[i]]=Test 
+
+}
+KIRC_Test=Test_list%>%do.call("rbind",.)%>%mutate(gene_symbol=rownames(.))
+
+
+V1=Valcano_plot_new_2(KIRC_Test,Common_path,"Subtype_associated_genes")
+
+```
+
+
+
+```{r,fig.height=10,fig.width=12}
+### Roc PLOT FOR genes 
+library(pROC)
+Auc_plot=list()
+for (i in Common_sig_genes ) {
+     rocobj <- pROC::roc( Pro_log_data_from_pathway2[,"Subtype2"],Pro_log_data_from_pathway2[,i])
+  # Get the full AUC
+   auc= round(auc(rocobj),4)
+ Auc_plot[[i]]= ggroc(rocobj, colour = 'steelblue', size = 2) +ggtitle(paste0(i, '(AUC = ', auc, ')'))
+  
+  
+}
+
+A1=cowplot::plot_grid(plotlist = Auc_plot,ncol=4)
+
+```
+* all 27 genes ROC *
+```{r,fig.height=6,fig.width=6,eval=T}
+library(pROC)
+library(ggplot2)
+
+# Convert outcome to binary (already done)
+Pro_log_data_from_pathway2$Subtype2_bin <- ifelse(Pro_log_data_from_pathway2$Subtype2 == "CHKIRC_Type1", 1, 0)
+
+# Build model
+formula_str <- paste("Subtype2_bin ~", paste(Common_sig_genes, collapse = " + "))
+model <- glm(as.formula(formula_str), data = Pro_log_data_from_pathway2, family = binomial)
+
+# Predict probabilities
+Pro_log_data_from_pathway2$predicted_prob <- predict(model, type = "response")
+
+# ROC and AUC
+rocobj_all <- roc(Pro_log_data_from_pathway2$Subtype2_bin, Pro_log_data_from_pathway2$predicted_prob)
+auc_all <- round(auc(rocobj_all), 4)
+
+# Plot ROC
+B1 <- ggroc(rocobj_all, colour = "darkred", size = 2) +
+  ggtitle(paste0("Combined ROC Curve (AUC = ", auc_all, ")"))
+
+ 
+
+
+```
+
+
+# CPTAC
+```{r}
+Genes_select=Common_sig_genes
+Pro_data=read.table(file.path(Rawdata_path,"CPTAC","Proteomics","CPTAC3_CCRCC.tumor2normal.txt"),fill=T,header=T,sep="\t" )%>%na.omit()
+colnames(Pro_data)=gsub("\\.","_",colnames(Pro_data))
+Pro_data_2=Pro_data%>%dplyr::filter(!Gene%in%c("Mean","Median","StdDev"))%>%matrix.please()%>%t()%>%as.data.frame()%>%na.omit()
+# Tumor/normal
+Pro_log_data=log2(Pro_data_2+1)
+Pro_log_data_rm_na=Pro_log_data%>%na.omit()%>%as.data.frame()
+CPTAC_proteomics_ratio_log=Pro_log_data_rm_na%>%t()%>%as.data.frame()
+Pro_log_data_from_pathway=CPTAC_proteomics_ratio_log%>%as.data.frame()%>%.[rownames(.) %in%Gene_all, ]
+Pro_log_data_from_pathway2=Pro_log_data_from_pathway%>%t()%>%as.data.frame()%>%mutate(Sample_ID=rownames(.))%>%left_join(.,CPTAC_Subtypes [,c("Sample_ID","Subtype2")])%>%arrange(Subtype2)
+rownames(Pro_log_data_from_pathway2)=Pro_log_data_from_pathway2$Sample_ID
+Pro_log_data_from_pathway2$Subtype2
+
+
+rownames(Pro_log_data_from_pathway2)=Pro_log_data_from_pathway2$Sample_ID
+Pro_log_data_from_pathway2$Subtype2
+subtype_color2=cbp1[c(6,7)]
+names(subtype_color2)=c("CPTAC_type1","CPTAC_type2")
+Annotation=CPTAC_Subtypes[,c("Sample_ID","Subtype2")]%>%arrange(Subtype2)%>%matrix.please()%>%as.data.frame()%>%setNames("Subtype")
+Annotation$Subtype=factor(Annotation$Subtype,levels=c("CPTAC_type1","CPTAC_type2" ))
+
+Annotation_color=list(Subtype=c("CPTAC_type1"=as.character(subtype_color2[1]), "CPTAC_type2"=as.character(subtype_color2[2])))
+S2=pheatmap_singscore( Genes_select,Pro_log_data_from_pathway2,Annotation,Annotation_color)
+
+Gene_select_anno= Pro_log_data_from_pathway2[,colnames(Pro_log_data_from_pathway2) %in% Genes_select] %>%na.omit()%>%as.data.frame()
+#%>%.[,rownames(Annotation)]
+
+
+
+
+Sig_gene_expression=Pro_log_data%>%.[,Common_sig_genes] %>%as.data.frame()
+set.seed(12345)
+UMAP_data=UMAP_output(Sig_gene_expression)%>%left_join(.,CPTAC_Subtypes [,c("Sample_ID","Subtype2")])
+
+P2=UMAP_plot(UMAP_data,shape_label="",color_label="Subtype2",color_defination=subtype_color2)
+
+Gene_select_anno= Pro_log_data_from_pathway2[,colnames(Pro_log_data_from_pathway2) %in% Genes_select] %>%na.omit()%>%t()%>%as.data.frame()%>%.[,rownames(Annotation)]
+
+
+Test_list=list()
+for (  i in Common_sig_genes){
+  Group1=Pro_log_data_from_pathway2%>%dplyr::filter(Subtype2=="CPTAC_type1")%>%.$Sample_ID
+  Group2=Pro_log_data_from_pathway2%>%dplyr::filter(Subtype2=="CPTAC_type2")%>%.$Sample_ID
+  Data=Pro_log_data_rm_na%>%t()%>%as.data.frame()%>%.[i,]
+  A_data=Data[,Group1]
+  B_data=Data[,Group2]
+  Test=Wilcox_test_singscore(Data,Group1,Group2)
+  #%>%.[,c("pvalue","Diff")]
+  #%>%dplyr::rename(log2Foldchange=Diff)
+  Test_list[[i]]=Test 
+
+}
+CPTAC_Test=Test_list%>%do.call("rbind",.)%>%mutate(gene_symbol=rownames(.))
+
+
+V2=Valcano_plot_new_2(CPTAC_Test,Common_path,"Subtype_associated_genes")
+
+
+
+```
+
+
+```{r,fig.height=10,fig.width=12,eval=T}
+### Roc PLOT FOR genes  
+set.seed(12345)
+Auc_plot=list()
+for (i in Common_sig_genes ) {
+     rocobj <- pROC::roc( Pro_log_data_from_pathway2[,"Subtype2"],Pro_log_data_from_pathway2[,i])
+  # Get the full AUC
+   auc= round(auc(rocobj),4)
+ Auc_plot[[i]]= ggroc(rocobj, colour = 'steelblue', size = 2) +ggtitle(paste0(i, '(AUC = ', auc, ')'))
+  
+  
+}
+
+A2=cowplot::plot_grid(plotlist = Auc_plot,ncol=4)
+
+```
+
+* all 27 genes ROC *
+```{r,fig.height=6,fig.width=6,eval=T}
+library(pROC)
+library(ggplot2)
+
+# Convert outcome to binary (already done)
+Pro_log_data_from_pathway2$Subtype2_bin <- ifelse(Pro_log_data_from_pathway2$Subtype2 == "CPTAC_type1", 1, 0)
+
+# Build model
+formula_str <- paste("Subtype2_bin ~", paste(Common_sig_genes, collapse = " + "))
+model <- glm(as.formula(formula_str), data = Pro_log_data_from_pathway2, family = binomial)
+
+# Predict probabilities
+Pro_log_data_from_pathway2$predicted_prob <- predict(model, type = "response")
+
+# ROC and AUC
+rocobj_all <- roc(Pro_log_data_from_pathway2$Subtype2_bin, Pro_log_data_from_pathway2$predicted_prob)
+auc_all <- round(auc(rocobj_all), 4)
+
+# Plot ROC
+B2 <- ggroc(rocobj_all, colour = "darkred", size = 2) +
+  ggtitle(paste0("Combined ROC Curve (AUC = ", auc_all, ")"))
+
+ 
+
+
+```
+
+# NC200
+
+```{r}
+Genes_select=Common_sig_genes
+
+Pro_log_data_from_pathway=NC_CCRCC_Pro_ratio_log%>%.[rownames(.) %in%Gene_all, ]
+Pro_log_data_from_pathway2=Pro_log_data_from_pathway%>%t()%>%as.data.frame()%>%mutate(Sample_ID=rownames(.))%>%left_join(.,NC200_subtypes [,c("Sample_ID","Subtype2")])%>%arrange(Subtype2)
+rownames(Pro_log_data_from_pathway2)=Pro_log_data_from_pathway2$Sample_ID
+
+Annotation=Pro_log_data_from_pathway2[,c("Sample_ID","Subtype2")]%>%arrange(Subtype2)%>%matrix.please()%>%as.data.frame()%>%setNames("Subtype")
+rownames(Annotation)=Pro_log_data_from_pathway2[,c("Sample_ID")]
+Annotation$Subtype=factor(Annotation$Subtype,levels=c("NC_type1","NC_type2"  ))
+
+
+Test_list=list()
+for (  i in Common_sig_genes){
+  Group1=Pro_log_data_from_pathway2%>%dplyr::filter(Subtype2=="NC_type1")%>%.$Sample_ID
+  Group2=Pro_log_data_from_pathway2%>%dplyr::filter(Subtype2=="NC_type2")%>%.$Sample_ID
+  Data=NC_CCRCC_Pro_ratio_log%>%.[i,]
+  A_data=Data[,Group1]
+  B_data=Data[,Group2]
+  Test=Wilcox_test_singscore(Data,Group1,Group2)
+  #%>%.[,c("pvalue","Diff")]%>%dplyr::rename(log2Foldchange=Diff)
+  Test_list[[i]]=Test 
+
+}
+NC_Test=Test_list%>%do.call("rbind",.)%>%mutate(gene_symbol=rownames(.))
+
+
+V3=Valcano_plot_new_2(NC_Test,Common_path,"Subtype_associated_genes")
+
+subtype_color3=cbp1[c(7,8)]
+names(subtype_color3)=c("NC_type1","NC_type2")
+
+
+Annotation_color=list(Subtype=c("NC_type1"=as.character(subtype_color3[1]), "NC_type2"=as.character(subtype_color3[2])))
+
+S3=pheatmap_singscore_2( Genes_select,Pro_log_data_from_pathway2,Annotation,Annotation_color)
+
+Gene_select_anno= Pro_log_data_from_pathway2[,colnames(Pro_log_data_from_pathway2) %in% Genes_select] %>%na.omit()%>%t()%>%as.data.frame()%>%.[,rownames(Annotation)]
+
+
+
+Sig_gene_expression=Pro_log_data_from_pathway%>%.[Common_sig_genes,]%>%t()%>%as.data.frame()%>%na.omit()
+
+UMAP_data=UMAP_output(Sig_gene_expression)%>%left_join(.,NC200_subtypes[,c("Sample_ID","Subtype2")])
+
+UMAP_data$Subtype2
+
+P3=UMAP_plot(UMAP_data,shape_label="",color_label="Subtype2",color_defination=subtype_color3)
+
+
+```
+
+```{r,fig.height=10,fig.width=12,eval=T}
+set.seed(12345)
+Auc_plot=list()
+for (i in Common_sig_genes ) {
+     rocobj <- pROC::roc( Pro_log_data_from_pathway2[,"Subtype2"],Pro_log_data_from_pathway2[,i])
+  # Get the full AUC
+   auc= round(auc(rocobj),4)
+ Auc_plot[[i]]= ggroc(rocobj, colour = 'steelblue', size = 2) +ggtitle(paste0(i, '(AUC = ', auc, ')'))
+  
+  
+}
+
+A3=cowplot::plot_grid(plotlist = Auc_plot,ncol=4)
+
+```
+
+
+
+* all 27 genes ROC *
+```{r,fig.height=6,fig.width=6,eval=T}
+library(pROC)
+library(ggplot2)
+
+# Convert outcome to binary (already done)
+Pro_log_data_from_pathway2$Subtype2_bin <- ifelse(Pro_log_data_from_pathway2$Subtype2 == "NC_type1", 1, 0)
+
+# Build model
+formula_str <- paste("Subtype2_bin ~", paste(Common_sig_genes, collapse = " + "))
+model <- glm(as.formula(formula_str), data = Pro_log_data_from_pathway2, family = binomial)
+
+# Predict probabilities
+Pro_log_data_from_pathway2$predicted_prob <- predict(model, type = "response")
+
+# ROC and AUC
+rocobj_all <- roc(Pro_log_data_from_pathway2$Subtype2_bin, Pro_log_data_from_pathway2$predicted_prob)
+auc_all <- round(auc(rocobj_all), 4)
+
+# Plot ROC
+B3 <- ggroc(rocobj_all, colour = "darkred", size = 2) +
+  ggtitle(paste0("Combined ROC Curve (AUC = ", auc_all, ")"))
+
+ 
+
+
+```
+
+
+# Main Figure
+```{r,fig.height=6,fig.width=14,include=T}
+cowplot::plot_grid(P1,P2,nrow=1,rel_widths = c(1,0.9))
+```
+
+
+```{r,fig.height=6,fig.width=14,include=T}
+cowplot::plot_grid(P3,ggplot()+theme_bw(),nrow=1,rel_widths = c(0.9,1))
+
+```
+
+\newpage
+
+# Supplementary figure:volcano plot
+
+```{r,fig.height=6,fig.width=14,include=T}
+cowplot::plot_grid(V1,V2,nrow=1,labels = c("KIRC","CPTAC"),rel_widths = c(1,0.9))
+```
+
+
+```{r,fig.height=6,fig.width=14,include=T}
+cowplot::plot_grid(V3,ggplot()+theme_bw(),nrow=1,labels=c("NC","" ),rel_widths = c(0.9,1),vjust=-0.6,hjust=-0.9)
+
+```
+
+# Supplementary figure: Heatmap
+```{r,fig.width=16,fig.height=8,include=T}
+cowplot::plot_grid(S1[[4]],S2[[4]],ncol=1,rel_widths = c(1,0.8),vjust=-0.3,hjust=-0.9)
+
+```
+
+```{r,fig.width=42,fig.height=12,include=T}
+cowplot::plot_grid(S3[[4]],ncol=1,scale =0.6)
+
+```
+
+
+\newpage 
+
+
+# Supplementary figure: AUC curve ( multivariate model)
+```{r,fig.width=16,fig.height=8,include=T}
+# set label position
+cowplot::plot_grid(B1,B2,B3,nrow=1,caption = "ROC curve for multivariate model using 27 subtype-associated genes",labels = c("KIRC","CPTAC","NC200"))
+```
+
+
+# Supplementary figure: AUC curve in KIRC (single gene)
+```{r,fig.width=16,fig.height=32,include=T}
+
+A1 
+```
+
+# Supplementary figure: AUC curve in CPTAC
+```{r,fig.width=16,fig.height=32,include=T}
+
+A2 
+```
+
+# Supplementary figure: AUC curve IN NC 200
+```{r,fig.width=16,fig.height=32,include=T}
+
+A3 
+```
+
+
+```{r}
+knitr::knit_exit()
+```
+
+
+```{r,fig.height=10,fig.width=12,eval=F}
+### Roc PLOT FOR genes with 
+
+Auc_plot=list()
+for (i in Common_sig_genes ) {
+     rocobj <- pROC::roc( Pro_log_data_from_pathway2[,"Subtype2"],Pro_log_data_from_pathway2[,i])
+  # Get the full AUC
+   auc= round(auc(rocobj),4)
+ Auc_plot[[i]]= ggroc(rocobj, colour = 'steelblue', size = 2) +ggtitle(paste0(i, '(AUC = ', auc, ')'))
+  
+  
+}
+
+cowplot::plot_grid(plotlist = Auc_plot,ncol=4)
+
+```
+
+
+
+
+## ROC analysis for type1 and type2
+
+
+
+
+```{r,include=F}
+library(pROC)
+auc_list=list()
+# install.packages("pROC")
+for (i in colnames(Pro_log_data_from_pathway2)){
+  if (i %in% Gene_all){
+   roc.gene <- pROC::roc( Pro_log_data_from_pathway2[,"Subtype2"],Pro_log_data_from_pathway2[,i])
+  # Get the full AUC
+   auc_list[[i]]=auc(roc.gene)%>%as.data.frame()%>%setNames(i)
+  }
+
+
+   
+  
+}
+```
+
+
+```{r}
+Auc_all=do.call("cbind",auc_list)
+CPTAC_Auc_sig=Auc_all %>%t()%>%as.data.frame()%>%setNames("AUC")%>%dplyr::filter(AUC>0.7)%>%arrange(AUC)
+```
+
+```{r}
+common_sig=intersect(rownames(CHKIRC_Auc_sig),rownames(CPTAC_Auc_sig))
+```
+
+
+```{r}
+subtype_color=cbp1[c(2,3)]
+Sig_gene_expression=CPTAC_proteomics_ratio_log%>%.[rownames(CPTAC_Auc_sig),]%>%t()%>%as.data.frame()
+
+UMAP_data=UMAP_output(Sig_gene_expression)%>%left_join(.,CPTAC_sig_UMAP[,c("Sample_ID","Subtype2")])%>%na.omit()
+UMAP_data$Subtype2
+
+UMAP_plot(UMAP_data,shape_label="",color_label="Subtype2",color_defination=subtype_color)
+ 
+```
+
+
+
+```{r}
+data(aSAH)
+roc(aSAH$outcome, aSAH$s100b)
+roc(outcome ~ s100b, aSAH)
+```
+
+
+```{r}
+Pathways_list=colnames(sig_pathways_umap)%>%.[grepl("singscore",.)]
+```
+
+
+```{r}
+roc.s100b <- pROC::roc(sig_pathways_umap$Subtype,as.numeric(sig_pathways_umap$WP_GLYCOLYSIS_AND_GLUCONEOGENESIS_Normalized_singscore) )
+# Get the full AUC
+Test=auc(roc.s100b)
+
+Test%>%as.data.frame()
+```
+
+ 
+
+
+#######################################################################3
+
+# CHKIRC cohort: type 1 and 2 in Invasion group (Supplymentary figures).Using kmeans to cluster Proteomics singscore data (top 2000 pathways with highest variance,Cluster1,CHKIRC_Invasion_type2; Cluster2 and 3,CHKIRC_Invasion_type1
+
+```{r,include=T,eval=T}
+# select invasion samples for subtypes analysis
+Invasion_singscore=KIRC_norm_singscore[Invasion_anno$Sample_ID,]
+Pro_singscore=Invasion_singscore
+Pro_singscore_Var=apply(Pro_singscore,2,var) %>%as.data.frame() %>%setNames("Var")
+Pro_singscore_Var_2000=Pro_singscore_Var %>%arrange(desc(Var),.keep_all=T) %>% as.data.frame()%>%dplyr::slice(c(1:2000))
+Data_select=Pro_singscore %>% .[,colnames(.) %in% rownames(Pro_singscore_Var_2000)]
+df=Data_select
+```
+
+```{r,include=T,eval=T}
+set.seed(1234)
+km.res=kmeans(df, 3, nstart = 25)
+```
+
+```{r,include=T,eval=T,fig.cap="kmeans for the invasion samples"}
+OUT=factoextra::fviz_cluster(km.res, df, geom = c("point"),show.clust.cent = F,ellipse.type = "convex")
+OUT
+```
+
+
+```{r,include=F,eval=T}
+df_clinical=data.frame(Cluster=km.res$cluster)%>% tibble::rownames_to_column(var="Sample_ID")%>%
+  mutate(Subtype=ifelse(Cluster==1,"CHKIRC_Invasion_type2","CHKIRC_Invasion_type1"))
+CHKIRC_subtype_anno_3=clinical_54_data_2%>%left_join(.,df_clinical)%>%mutate(Subtype=ifelse(is.na(Subtype),"CHKIRC_Primary",Subtype))
+
+CHKIRC_subtype_anno_3$Subtype=factor(CHKIRC_subtype_anno_3$Subtype,levels=c("CHKIRC_Primary","CHKIRC_Invasion_type1","CHKIRC_Invasion_type2" ))
+CHKIRC_subtype_anno_3_Invasion=CHKIRC_subtype_anno_3%>%dplyr::filter(Capsular_invasion=="Y")
+#write.csv(CHKIRC_subtype_anno_3,file.path(Rawdata_path,"CHKIRC","Proteomics","11012023_CHKIRC_subtype_lable.csv" ))
+CHKIRC_subtype_anno_3_Invasion=CHKIRC_subtype_anno_3%>%dplyr::filter(Capsular_invasion=="Y")
+
+```
+
+
+```{r,eval=F}
+#CHKIRC_subtype_anno_3=read.csv(file.path(Rawdata_path,"CHKIRC","Proteomics","11012023_CHKIRC_subtype_lable.csv" ))
+```
+
+
+## differential pathways between KIRC invasion subtype2  and 1 
+```{r,eval=T}
+Pro_singscore_t=KIRC_norm_singscore%>%t()%>%as.data.frame()
+Invasion_Type1=CHKIRC_subtype_anno_3%>%dplyr::filter(Subtype=="CHKIRC_Invasion_type1")%>%.$Sample_ID
+Invasion_Type2=CHKIRC_subtype_anno_3%>%dplyr::filter(Subtype=="CHKIRC_Invasion_type2")%>%.$Sample_ID
+invasion_Type2_vs_type1_singscore_wilcox=Wilcox_test_singscore(Pro_singscore_t,Invasion_Type1 ,Invasion_Type2)
+invasion_Type2_vs_type1_singscore_wilcox_p001_all=invasion_Type2_vs_type1_singscore_wilcox%>%dplyr::filter(padj<0.01)
+invasion_Type2_vs_type1_singscore_wilcox_p001=invasion_Type2_vs_type1_singscore_wilcox%>%dplyr::filter(padj<0.01)%>%dplyr::filter(grepl("WP_|KEGG|REACTOME|HALLMARK",SYMBOL ))%>%arrange(pvalue)
+
+
+```
+
+## KIRC Significant pathways
+
+```{r}
+
+Subtype_pathways=c("WP_GLYCOLYSIS_AND_GLUCONEOGENESIS_Normalized_singscore","REACTOME_PENTOSE_PHOSPHATE_PATHWAY_Normalized_singscore","WP_FATTY_ACID_OMEGAOXIDATION_Normalized_singscore","HALLMARK_EPITHELIAL_MESENCHYMAL_TRANSITION_Normalized_singscore","HALLMARK_MTORC1_SIGNALING_Normalized_singscore","REACTOME_SIGNALING_BY_MET_Normalized_singscore","REACTOME_ECM_PROTEOGLYCANS_Normalized_singscore","WP_PI3KAKT_SIGNALING_PATHWAY_Normalized_singscore","HALLMARK_TGF_BETA_SIGNALING_Normalized_singscore","REACTOME_TP53_REGULATES_METABOLIC_GENES_Normalized_singscore","REACTOME_SIGNALING_BY_RECEPTOR_TYROSINE_KINASES_Normalized_singscore","REACTOME_INTEGRIN_CELL_SURFACE_INTERACTIONS_Normalized_singscore")#WP_FATTY_ACID_OMEGAOXIDATION_Normalized_singscore,
+```
+
+```{r}
+Subtype_pathways_anno=invasion_Type2_vs_type1_singscore_wilcox_p001%>%dplyr::filter(SYMBOL%in%Subtype_pathways)%>%arrange(desc(Diff))
+```
+
+
+```{r,fig.height=18,fig.width=12,eval=T}
+subtype_color=cbp1[c(3,5)]
+
+subtype_color=cbp1[c(1,3,5)]
+
+Compare_list=list(c("CHKIRC_Primary","CHKIRC_Invasion_type1" ), c("CHKIRC_Primary","CHKIRC_Invasion_type2" ),c("CHKIRC_Invasion_type1" ,"CHKIRC_Invasion_type2" ))
+
+Norm_singscore_anno=KIRC_norm_singscore[,Subtype_pathways_anno$SYMBOL] %>%dplyr::mutate(Sample_ID=rownames(.))%>%left_join(.,CHKIRC_subtype_anno_3)
+Norm_singscore_anno$Subtype=factor(Norm_singscore_anno$Subtype,levels=c("CHKIRC_Primary","CHKIRC_Invasion_type1","CHKIRC_Invasion_type2" ))
+Batch_singscore_boxplot (Subtype_pathways_anno$SYMBOL,Norm_singscore_anno,"Subtype" ,fillby="Subtype",nCol=3,Compare_list,subtype_color )
+
+
+
+```
+
+## UMAP plot based on sig pathways (it is showed that primary also have the same subtypes as invasion group )
+
+```{r}
+
+subtype_color=cbp1[c(1,3,5)]
+
+names(subtype_color)=c("CHKIRC_Primary","CHKIRC_Invasion_type1","CHKIRC_Invasion_type2")
+names(subtype_color)=c("CHKIRC_Primary","CHKIRC_Invasion_type1","CHKIRC_Invasion_type2")
+Data=Norm_singscore_anno[,Subtype_pathways]%>%t() %>%na.omit()%>%t()%>%as.data.frame()
+rownames(Data)=Norm_singscore_anno$Sample_ID
+
+sig_pathways_umap=UMAP_output(Data)%>% left_join(.,CHKIRC_subtype_anno_3_Invasion[,c("Sample_ID","Subtype","Cluster")]) %>%mutate(Cluster=as.character(Cluster))
+
+UMAP_plot(Data_umap=sig_pathways_umap,shape_label="",color_label="Subtype",color_defination=subtype_color)
+```
+
+## Primary_type1 and type2 
+```{r}
+set.seed(1234)
+
+Data_select= KIRC_norm_singscore[,Subtype_pathways]%>%apply(.,2,unlist)%>%as.data.frame()%>%na.omit()
+df=Data_select
+km.res <- kmeans(df, 3, nstart =50)
+
+Cluster_mean=aggregate(Data_select , by=list(cluster=km.res$cluster), mean)
+
+factoextra::fviz_cluster(km.res, df, geom = c("point"),ellipse.type = "convex")
+```
+
+\newpage
+
+```{r}
+df_clinical=Data_select%>%mutate(Cluster=as.character(km.res$cluster))%>% tibble::rownames_to_column(var="Sample_ID")%>%left_join(.,CHKIRC_subtype_anno_3[,c("Sample_ID","Subtype")])
+
+
+data=df_clinical[,c("Cluster","Subtype")] %>% group_by(Cluster,Subtype) %>% summarise(n=n())
+
+df_cumsum <- plyr::ddply(data, "Cluster",
+                   transform, label_ypos=cumsum(n)-0.5*n)
+
+df_cumsum$Subtype=factor(df_cumsum$Subtype,levels=rev(c("CHKIRC_Invasion_type1","CHKIRC_Invasion_type2","CHKIRC_Primary")))
+
+
+#df_cumsum$stage2=factor(df_cumsum$stage2)
+
+ggplot(df_cumsum, aes(x=Cluster, y=n,fill=Subtype)) +
+  geom_bar(stat="identity")+geom_text(aes(y=label_ypos, label=n), vjust=1.2, 
+            color="black", size=3.5)+  theme_minimal()+coord_flip()
+
+df_clinical_anno=df_clinical%>%mutate(Subtype2=ifelse(Cluster==3&Subtype=="CHKIRC_Primary","CHKIRC_Primary_type2",ifelse(Subtype=="CHKIRC_Primary","CHKIRC_Primary_type1",as.character(Subtype  )  )))
+df_clinical_anno$Subtype2=factor(df_clinical_anno$Subtype2, levels=c("CHKIRC_Primary_type1","CHKIRC_Primary_type2","CHKIRC_Invasion_type1","CHKIRC_Invasion_type2"))
+```
+
+
+## The main figure (UMAP for the subtypes)
+```{r}
+subtype_color_2=cbp1[c(4,2,3,5)]
+
+names(subtype_color_2)=c("CHKIRC_Primary_type1","CHKIRC_Primary_type2","CHKIRC_Invasion_type1","CHKIRC_Invasion_type2")
+Data= KIRC_norm_singscore[,Subtype_pathways]%>%t() %>%na.omit()%>%t()%>%as.data.frame()
+
+sig_pathways_umap=UMAP_output(Data)%>% left_join(.,df_clinical_anno[,c("Sample_ID","Subtype2")]) %>%dplyr::rename(Subtype=Subtype2)
+
+sig_pathways_umap$Subtype
+UMAP_plot(Data_umap=sig_pathways_umap,shape_label="",color_label="Subtype",color_defination=subtype_color_2)
+```
+
+## Main figure (box plot for signficant pathways)
+```{r,fig.height=18,fig.width=14,eval=T}
+subtype_color_2=cbp1[c(4,2,3,5)]
+
+
+Compare_list=list(c("CHKIRC_Primary","CHKIRC_Invasion_type1" ), c("CHKIRC_Primary","CHKIRC_Invasion_type2" ),c("CHKIRC_Invasion_type1" ,"CHKIRC_Invasion_type2" ))
+
+Norm_singscore_anno=KIRC_norm_singscore[,Subtype_pathways_anno$SYMBOL] %>%dplyr::mutate(Sample_ID=rownames(.))%>%left_join(.,CHKIRC_subtype_anno_3)
+Norm_singscore_anno$Subtype=factor(Norm_singscore_anno$Subtype,levels=c("CHKIRC_Primary","CHKIRC_Invasion_type1","CHKIRC_Invasion_type2" ))
+Batch_singscore_boxplot (Subtype_pathways_anno$SYMBOL,sig_pathways_umap,"Subtype" ,fillby="Subtype",nCol=4,Compare_list,subtype_color_2 )
+
+```
+
+
+```{r,fig.width=16,fig.height=8}
+
+
+data_sort=sig_pathways_umap%>%arrange(Subtype)
+KIRC_sig_pathway_data=data_sort%>%.[,grepl("singscore",colnames(.))]
+rownames(KIRC_sig_pathway_data)=data_sort$Sample_ID
+KIRC_sig_pathway_data_t=t(KIRC_sig_pathway_data)%>%as.data.frame()
+KIRC_sig_pathway_anno=data_sort[,c("Sample_ID","Subtype")]%>%matrix.please()%>%as.data.frame()%>%setNames("Subtype")
+
+pheatmap::pheatmap(KIRC_sig_pathway_data_t,cellwigermline=5, cellheight = 10,cellwidth = 10, scale = "row",
+                                    treeheight_row = 5,
+                                    show_rownames = T,show_colnames = F,
+                                    annotation_col= KIRC_sig_pathway_anno,
+                                    # annotation_row=Annotation,
+                                    #annotation_legend=Label_def,
+                                    cluster_rows = T,  cluster_cols = F,clustering_distance_rows = "euclidean")
+```
+
+
+```{r,eval=F}
+write.csv(sig_pathways_umap,file=file.path(Rawdata_path,"CHKIRC","Proteomics","54_subtypes_UMAP_sig_pathways.csv"))
+```
+
+```{r}
+dir(Reference_path)
+```
+
+
+
+# CPTAC data subtype
+```{r}
+load(file.path(Rawdata_path,"Two_cohorts_normalized_singscore.data"))
+```
+
+## select  for the analysis: patients with Invsion
+
+```{r}
+CPTAC_norm_singscore=Two_cohorts_singscore_norm%>% .[grepl("C3",rownames(.)),]
+CPTAC_proteomics_path=file.path(Path,"Raw_data/CPTAC/Proteomics")
+
+CPTAC_proteomics_ratio=read.table(file.path(CPTAC_proteomics_path,"CPTAC3_CCRCC.tumor2normal.txt"),fill=T,header = T,check.names = F) %>% .[4:9967,]%>%matrix.please()%>%as.data.frame()
+
+CPTAC_clinical_path=file.path(Path,"Raw_data/CPTAC/Clinical")
+CPTAC_clinic=readxl::read_excel(file.path(CPTAC_clinical_path,"S050_S044_CPTAC_ccRCC_Discovery_Cohort_Clinical_Data_r4_Sept2019.xlsx"),
+                                sheet=2)
+
+CPTAC_proteomics_ratio=read.table(file.path(CPTAC_proteomics_path,"CPTAC3_CCRCC.tumor2normal.txt"),fill=T,header = T,check.names = F) %>% .[4:9967,]%>%matrix.please()%>%as.data.frame()
+colnames(CPTAC_clinic)=gsub("/","_",colnames(CPTAC_clinic))
+
+CPTAC_clinic_paried=CPTAC_clinic %>% dplyr::filter(tumor_normal=="TN")%>%mutate (stage=ifelse(grepl( "pT1",pathologic_staging_primary_tumor_pT),"T1","T2-T4"))  %>% mutate(stage2=gsub("a|b","",pathologic_staging_primary_tumor_pT)) %>%
+  dplyr::rename(Sample_ID="case_id",diameter="tumor_size_in_cm")%>% .[,c("Sample_ID","age","stage","stage2","diameter")]  %>%mutate(Capsular_invasion="Unknown")
+setdiff(CPTAC_clinic_paried$Sample_ID,colnames(CPTAC_proteomics_ratio))
+
+CPTAC_proteomics_ratio_log=log2(CPTAC_proteomics_ratio)
+# 
+#T2_T4_anno=CPTAC_clinic_paried%>%dplyr::filter(stage2!="pT1")
+T2_T4_anno=CPTAC_clinic_paried
+#T2_T4=CPTAC_clinic_paried%>%dplyr::filter(stage2!="pT1")
+T2_T4=CPTAC_clinic_paried
+#T2_T4_clin=NC_200_T2_T4_subtype_clin%>%dplyr::filter(stage2!="pT1")
+T2_T4_clin=CPTAC_clinic_paried
+```
+```{r,include=T,fig.height=18,fig.width=12}
+set.seed(1234)
+subtype_color=cbp1
+Data_select=CPTAC_norm_singscore [T2_T4$Sample_ID, Subtype_pathways_anno$SYMBOL]%>%apply(.,2,unlist)%>%as.data.frame()%>%na.omit()
+df=Data_select
+km.res <- kmeans(df,5, nstart =100)
+Cluster_mean=aggregate(Data_select , by=list(cluster=km.res$cluster), mean)
+factoextra::fviz_cluster(km.res, df,geom = c("point"),ellipse.type = "convex")
+df_clinical=Data_select%>%mutate(Cluster=as.character(km.res$cluster))%>% tibble::rownames_to_column(var="Sample_ID")
+Batch_singscore_boxplot (Subtype_pathways,df_clinical,"Cluster",fillby="Cluster",nCol=3,Compare_list,subtype_color )
+```
+
+\newpage
+
+## UMAP plot based on sig pathways
+
+```{r,include=T}
+#Subtype2_vs_subtype1_sig
+# CPTAC_subtype_color=cbp1[c(1,3,7,4,8)][c(6,4,5)]
+# names(CPTAC_subtype_color)=c("CPTAC_Primary" ,"CPTAC_Invasion_type1","CPTAC_Invasion_type2")
+set.seed(1234)
+subtype_color=cbp1[1:5]
+names(subtype_color)=c(1:5)
+Data= Data_select
+sig_pathways_umap=UMAP_output(Data)%>% left_join(.,df_clinical[,c("Sample_ID","Cluster")]) 
+UMAP_plot(Data_umap=sig_pathways_umap,shape_label="",color_label="Cluster",color_defination=subtype_color)
+```
+
+```{r}
+df_clinical=as.data.frame(km.res$cluster)%>% tibble::rownames_to_column(var="Sample_ID")%>%left_join(.,T2_T4_clin)
+CPTAC_subtype_anno=data.frame(Cluster=km.res$cluster)%>%mutate(Subtype2=ifelse(Cluster%in%c(1,5),"CPTAC_type2","CPTAC_type1"))%>%mutate(Sample_ID=rownames(.))
+```
+
+\newpage
+
+## Main figure 
+```{r,fig.height=18,fig.width=14,eval=T}
+subtype_color=cbp1[c(2,3)]
+
+CPTAC_singscore_anno=Data_select%>%mutate(Sample_ID=rownames(.))%>%left_join(.,CPTAC_subtype_anno[,c("Sample_ID","Subtype2")])
+rownames(CPTAC_singscore_anno)=CPTAC_singscore_anno$Sample_ID
+
+Compare_list=list(c("CPTAC_type1" ,"CPTAC_type2" ))
+
+Batch_singscore_boxplot (Subtype_pathways_anno$SYMBOL,CPTAC_singscore_anno,"Subtype2",fillby="Subtype2",nCol=4,Compare_list,subtype_color )
+```
+
+
+## main figure: UMAP plot based on sig pathways
+```{r}
+
+subtype_color=cbp1[c(2,3)]
+
+
+names(subtype_color)=c("CPTAC_type1","CPTAC_type2")
+
+Data= Data_select
+sig_pathways_umap_2=sig_pathways_umap%>% left_join(.,CPTAC_subtype_anno[,c("Sample_ID","Subtype2")]) 
+
+UMAP_plot(Data_umap=sig_pathways_umap_2,shape_label="",color_label="Subtype2",color_defination=subtype_color)
+
+
+```
+
+
+```{r,fig.width=16,fig.height=8}
+
+
+data_sort=sig_pathways_umap_2%>%arrange(Subtype2)
+CPTAC_sig_pathway_data=data_sort%>%.[,grepl("singscore",colnames(.))]
+rownames(CPTAC_sig_pathway_data)=data_sort$Sample_ID
+CPTAC_sig_pathway_data_t=t(CPTAC_sig_pathway_data)%>%as.data.frame()
+CPTAC_sig_pathway_anno=data_sort[,c("Sample_ID","Subtype2")]%>%matrix.please()%>%as.data.frame()%>%setNames("Subtype")
+
+pheatmap::pheatmap(CPTAC_sig_pathway_data_t,cellwigermline=5, cellheight = 10,cellwidth = 6, scale = "row",
+                                    treeheight_row = 5,
+                                    show_rownames = T,show_colnames = F,
+                                    annotation_col= CPTAC_sig_pathway_anno,
+                                    # annotation_row=Annotation,
+                                    #annotation_legend=Label_def,
+                                    cluster_rows = T,  cluster_cols = F,clustering_distance_rows = "euclidean")
+```
+
+```{r}
+write.csv(sig_pathways_umap_2,file=file.path(Rawdata_path,"CPTAC","Proteomics","79_CPTAC_subtypes_UMAP_sig_pathways.csv"))
+
+```
+
+
+
+
+# NC CCRCC 230 
+
+```{r}
+load(file.path(Rawdata_path,"200_NC_CCRCC_proteomics","NC_200_normalized_singscore.data"))
+load(file.path(Rawdata_path,"NC_230", "T2_T4_subtype_clin.rdata")  )
+
+dir(file.path(Rawdata_path,"NC_230"))
+```
+
+## subtypes based on significant pathways
+```{r,fig.width=12,fig.height=12}
+#NC_T1=NC_200_T2_T4_subtype_clin%>%dplyr::filter(stage2=="pT1")
+set.seed(1234)
+NC_T1=NC_200_T2_T4_subtype_clin
+
+subtype_color=cbp1
+
+subtype_color=cbp1
+select_pathways= Subtype_pathways
+
+Data_select=NC_cohort_singscore_norm [NC_T1$Sample_ID, Subtype_pathways]%>%apply(.,2,unlist)%>%as.data.frame()%>%na.omit()
+df=Data_select
+Kn=6
+
+Data_select=NC_cohort_singscore_singscore_norm [NC_T1$Sample_ID,select_pathways ]%>%apply(.,2,unlist)%>%as.data.frame()%>%na.omit()
+df=Data_select
+km.res <- kmeans(df,Kn, nstart =50)
+
+Cluster_mean=aggregate(Data_select , by=list(cluster=km.res$cluster), mean)
+
+factoextra::fviz_cluster(km.res, df, geom = c("point"),ellipse.type = "convex")
+
+df_clinical=Data_select%>%mutate(Cluster=as.character(km.res$cluster))%>% tibble::rownames_to_column(var="Sample_ID")
+Batch_singscore_boxplot (select_pathways,df_clinical,"Cluster",fillby="Cluster",nCol=3,Compare_list,subtype_color )
+```
+
+\newpage
+
+```{r,fig.width=12,fig.height=12}
+#*UMAP plot based on sig pathways**
+#Subtype2_vs_subtype1_sig
+# NC_subtype_color=cbp1[c(1,3,7,4,8)][c(6,4,5)]
+# names(NC_subtype_color)=c("CPTAC_Primary" ,"CPTAC_Invasion_type1","CPTAC_Invasion_type2")
+set.seed(1234)
+subtype_color=cbp1[1:Kn]
+
+
+
+names(subtype_color)=c(1:Kn)
+
+Data= Data_select
+
+
+sig_pathways_umap=UMAP_output(Data)%>% left_join(.,df_clinical[,c("Sample_ID","Cluster")])
+```
+
+
+```{r,fig.width=6,fig.height=6}
+UMAP_plot(Data_umap=sig_pathways_umap,shape_label="",color_label="Cluster",color_defination=subtype_color)
+```
+
+\newpage
+
+# Main figure (Box plots for significant pathways)
+
+```{r,fig.height=18,fig.width=14,eval=T}
+#df_clinical=as.data.frame(km.res$cluster)%>% tibble::rownames_to_column(var="Sample_ID")%>%left_join(.,)
+
+NC_subtype_anno=data.frame(Cluster=km.res$cluster)%>%mutate(Subtype2=ifelse(Cluster%in%c(1,3,6),"NC_type1","NC_type2"))%>%mutate(Sample_ID=rownames(.))
+
+subtype_color=cbp1[c(4,3)]
+
+
+
+NC_singscore_anno=Data_select%>%mutate(Sample_ID=rownames(.))%>%left_join(.,NC_subtype_anno[,c("Sample_ID","Subtype2")])
+rownames(NC_singscore_anno)=NC_singscore_anno$Sample_ID
+
+
+Compare_list=list(c("NC_type1" ,"NC_type2" ))
+#Subtype_pathways=intersect(Subtype_pathways,colnames(T2_T4_Norm_singscore_anno))
+
+
+Batch_singscore_boxplot (Subtype_pathways_anno $SYMBOL,NC_singscore_anno,"Subtype2",fillby="Subtype2",nCol=4,Compare_list,subtype_color )
+```
+
+## Main figure: UMAP plot based on sig pathways
+```{r}
+#Subtype2_vs_subtype1_sig
+# NC_subtype_color=cbp1[c(1,3,7,4,8)][c(6,4,5)]
+# names(NC_subtype_color)=c("NC_Primary" ,"NC_Invasion_type1","NC_Invasion_type2")
+set.seed(1234)
+subtype_color=cbp1[c(3,5)]
+
+names(subtype_color)=c("NC_type1","NC_type2")
+# Data= T2_T4_Norm_singscore_anno[,Subtype_pathways]%>%t() %>%na.omit()%>%t()%>%as.data.frame()
+
+Data= Data_select
+
+
+# sig_pathways_umap=UMAP_output(Data_select)%>% left_join(.,T2_T4_anno[,c("Sample_ID","Subtype2")]) 
+# sig_pathways_umap$Subtype2
+sig_pathways_umap_2=sig_pathways_umap%>% left_join(.,NC_subtype_anno[,c("Sample_ID","Subtype2")]) 
+
+UMAP_plot(Data_umap=sig_pathways_umap_2,shape_label="",color_label="Subtype2",color_defination=subtype_color)
+```
+
+
+
+```{r,fig.width=25,fig.height=8}
+
+
+data_sort=sig_pathways_umap_2%>%arrange(Subtype2)
+NC_sig_pathway_data=data_sort%>%.[,grepl("singscore",colnames(.))]
+rownames(NC_sig_pathway_data)=data_sort$Sample_ID
+NC_sig_pathway_data_t=t(NC_sig_pathway_data)%>%as.data.frame()
+NC_sig_pathway_anno=data_sort[,c("Sample_ID","Subtype2")]%>%matrix.please()%>%as.data.frame()%>%setNames("Subtype")
+
+pheatmap::pheatmap(NC_sig_pathway_data_t,cellwigermline=5, cellheight = 12,cellwidth =6, scale = "row",
+                                    treeheight_row = 5,
+                                    show_rownames = T,show_colnames = F,
+                                    annotation_col= NC_sig_pathway_anno,
+                                    # annotation_row=Annotation,
+                                    #annotation_legend=Label_def,
+                                    cluster_rows = T,  cluster_cols = F,clustering_distance_rows = "euclidean")
+```
+
+
+## T2-T4
+
+```{r,fig.height=8,fig.width=8}
+library(survival) 
+T3_T4_anno=NC_subtype_anno%>%left_join(.,NC_T1) %>%dplyr::filter(stage2!="pT1")
+fit<- survival::survfit(survival::Surv(Month, Status)~Subtype2, data =T3_T4_anno)
+# Drawing survival curves
+survminer::ggsurvplot(fit,pval = TRUE,title="T2-T4",risk.table = T,data=T3_T4_anno)
+```
+
+## Main figure (T3-T4 survial curve)
+
+```{r,fig.height=6,fig.width=8}
+library(survival) 
+T3_T4_anno=NC_subtype_anno%>%left_join(.,NC_T1) %>%dplyr::filter(stage2!="pT2")%>%dplyr::filter(stage2!="pT1")
+fit<- survival::survfit(survival::Surv(Month, Status)~Subtype2, data =T3_T4_anno)
+# Drawing survival curves
+survminer::ggsurvplot(fit,pval = TRUE,title="T3-T4",risk.table = T,data=T3_T4_anno)
+```
+
+```{r,eval=F}
+write.csv(sig_pathways_umap_2,file=file.path(Rawdata_path,"NC_230","232_NC_subtypes_UMAP_sig_pathways.csv"))
+
+```
+
+
+```{r}
+knitr::knit_exit()
+```
+
+
+
+
